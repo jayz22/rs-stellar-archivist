@@ -30,6 +30,8 @@
 #![allow(clippy::use_debug)]
 #![allow(clippy::doc_markdown)]
 
+#[cfg(feature = "corruption-tool")]
+pub mod corruption;
 pub mod history_format;
 pub mod metrics;
 pub mod mirror_operation;
