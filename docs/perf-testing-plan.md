@@ -179,10 +179,12 @@ diff -r "$SNAP" "$MIR" > "$WORK/repair.diff" || true
 ### 5.4 Repair dry-run produces a usable plan
 ```bash
 ./bin/corrupt-archive "$SNAP" --kinds all --count 10 --seed 2 --manifest "$WORK/c2.json"  # on a fresh copy
-./bin/sa-clean repair "$SRC" "file://<copy>" --dry-run --report "$WORK/plan.json"
+./bin/sa-clean repair "$SRC" "file://<copy>" --dry-run --verify --report "$WORK/plan.json"
 ./bin/sa-clean repair "$SRC" "file://<copy>" --plan "$WORK/plan.json"
 ```
-**Pass:** `plan.json` broken set == `c2.json`; applying `--plan` restores the copy (diff empty vs its snapshot).
+**`--verify` on the dry-run is required:** without it the dry-run only detects *missing* files (existence), so content corruptions (hash/chain/bucket) are omitted from the plan and the subsequent `--plan` apply leaves them unrepaired. With `--verify` the plan captures all of them.
+
+**Pass:** applying `--plan` restores the copy — `diff -r` against its pre-corruption snapshot is empty. (Note: a hard scan/verify failure may abort before the `--report` is written, so detection is confirmed via the non-zero exit code; the plan/report is produced by the dry-run, which completes.)
 
 Run 5.1–5.4 once on v1 (`testnet-archive-small`) and once on **v2** (`testnet-archive-v2`, has `hotArchiveBuckets`) for format coverage.
 
