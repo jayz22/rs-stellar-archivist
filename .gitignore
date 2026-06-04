@@ -1,8 +1,12 @@
 /target
 /tools
+/docs/superpowers/**
 
 .*
 !.gitignore
 !.github
 !.devcontainer
 !testdata/**/.well-known
+**/testnet-archive-v2/**
+/perf-results/
+/bin/
