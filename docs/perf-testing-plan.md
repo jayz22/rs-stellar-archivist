@@ -28,7 +28,7 @@
 - **Operations:** `scan <archive>`, `mirror <src> <dst>`, `repair <src> <dst>`. Sources/dests are URLs: `file://…`, `https://…`, `s3://…`, etc.
 - **An archive** is laid out by *checkpoint* (every 64 ledgers: 63, 127, 191, …). Per checkpoint there are up to 5 files — `history-*.json`, `ledger-*.xdr.gz`, `transactions-*.xdr.gz`, `results-*.xdr.gz`, and optional `scp-*.xdr.gz` — plus content-addressed `bucket/…/bucket-<hash>.xdr.gz` (deduplicated across checkpoints). The root `.well-known/stellar-history.json` describes the archive's current state.
 - **Key flags** (all global unless noted):
-  - `-C, --concurrency <N>` — concurrent checkpoints (default **32**). This is the knob the scaling test sweeps. (The tokio runtime is already multi-threaded; `-C` bounds in-flight checkpoints, not OS threads.)
+  - `-c, --concurrency <N>` — concurrent checkpoints (default **32**). This is the knob the scaling test sweeps. (The tokio runtime is already multi-threaded; `-c` bounds in-flight checkpoints, not OS threads.) **Note: the short flag is lowercase `-c`.**
   - `--max-concurrent <N>` — concurrent I/O ops per backend (default 64).
   - `--verify` — download + decompress + hash/verify content (XDR + bucket SHA256). Without it, **scan only checks existence**; mirror/repair copy bytes without verifying.
   - `--report <path>` — write a JSON status report (counts + the broken-file set).
@@ -201,7 +201,7 @@ Run 5.1–5.4 once on v1 (`testnet-archive-small`) and once on **v2** (`testnet-
 - **Isolation:** quiet machine, AC power (laptops), no other heavy IO. For local-source tests, pre-warm the OS file cache once (or explicitly test cold vs warm and label it).
 - **No `--debug/--trace`** during perf runs.
 
-### 6.1 Scaling test — time/RSS vs `-C` (local source, removes network noise)
+### 6.1 Scaling test — time/RSS vs `-c` (local source, removes network noise)
 
 **Fixture:** a substantial **local** archive so concurrency has work to show. Create once by mirroring a bounded pubnet range locally (e.g. ~2,000 checkpoints), then use it read-only as `file://`:
 ```bash
@@ -209,19 +209,19 @@ Run 5.1–5.4 once on v1 (`testnet-archive-small`) and once on **v2** (`testnet-
 FIX=file://$PWD/perf-results/fixture
 ```
 
-**Sweep** `-C ∈ {1,2,4,8,16,32,64}` (extend to 96/128 if not yet plateaued) across these modes:
+**Sweep** `-c ∈ {1,2,4,8,16,32,64}` (extend to 96/128 if not yet plateaued) across these modes:
 - `scan` (existence only), `scan --verify`
 - `mirror` (to a fresh empty dst each run), `mirror --verify`
 - `repair` (against a freshly corrupted copy of the fixture; same corruption seed each run), `repair --dry-run`
 
-For each (mode × `-C` × rep): record wall, peak RSS, throughput, exit code → `run.csv`; and one instrumented (`sa-perf`) run per (mode × `-C`) for `phases.csv`.
+For each (mode × `-c` × rep): record wall, peak RSS, throughput, exit code → `run.csv`; and one instrumented (`sa-perf`) run per (mode × `-c`) for `phases.csv`.
 
 **Plots** (`scripts/perf/plot.py`, matplotlib → PNG):
-- wall-time vs `-C`, one line per mode (find the knee / plateau).
-- peak-RSS vs `-C`, one line per mode.
-- stacked **phase breakdown** bar per mode at the plateau `-C`.
+- wall-time vs `-c`, one line per mode (find the knee / plateau).
+- peak-RSS vs `-c`, one line per mode.
+- stacked **phase breakdown** bar per mode at the plateau `-c`.
 
-### 6.2 Full pubnet (true full, `-C=32`, remote)
+### 6.2 Full pubnet (true full, `-c=32`, remote)
 
 **⚠️ Large:** hundreds of GB of disk, many hours. Ensure disk headroom; run in `tmux`/`nohup`. Mirror is resumable (re-running continues); the harness logs progress and can resume.
 
@@ -229,14 +229,14 @@ Order (mirror first so scan/repair can optionally use the local copy too):
 ```bash
 DST=file:///big/disk/pubnet-mirror
 # 1) MIRROR (downloads everything)
-time-wrap ./bin/sa-clean mirror "$PUBNET" "$DST" -C 32 --report mirror.json
+time-wrap ./bin/sa-clean mirror "$PUBNET" "$DST" -c 32 --report mirror.json
 # 2) SCAN remote (existence) and SCAN remote --verify
-time-wrap ./bin/sa-clean scan "$PUBNET" -C 32 --report scan.json
-time-wrap ./bin/sa-clean scan "$PUBNET" -C 32 --verify --report scan-verify.json
+time-wrap ./bin/sa-clean scan "$PUBNET" -c 32 --report scan.json
+time-wrap ./bin/sa-clean scan "$PUBNET" -c 32 --verify --report scan-verify.json
 # 3) REPAIR: corrupt a copy of the local mirror, repair from remote
 ./bin/corrupt-archive /big/disk/pubnet-copy --kinds all --count <K> --manifest c.json
-time-wrap ./bin/sa-clean repair "$PUBNET" file:///big/disk/pubnet-copy -C 32 --verify --report repair.json
-time-wrap ./bin/sa-clean repair "$PUBNET" file:///big/disk/pubnet-copy -C 32 --dry-run --report plan.json
+time-wrap ./bin/sa-clean repair "$PUBNET" file:///big/disk/pubnet-copy -c 32 --verify --report repair.json
+time-wrap ./bin/sa-clean repair "$PUBNET" file:///big/disk/pubnet-copy -c 32 --dry-run --report plan.json
 ```
 Capture for each: wall, peak RSS, throughput (MB/s, files/s), the phase breakdown (one `sa-perf` run; for the very longest, `sa-perf` mirror may be skipped if overhead is a concern — note it), and the `ps` RSS time-series. **Remote runs are network-bound** — explicitly note measured bandwidth so CPU/IO bottlenecks aren't confused with network limits. Re-run the scan/repair against the **local** full mirror (`file://`) to get the network-free engine numbers for comparison.
 
@@ -261,7 +261,7 @@ perf-results/
 
 ## 8. Final deliverable — performance report
 
-`docs/perf-report.md` containing: environment table; **headline table** (op × mode → wall, peak RSS, throughput, at default `-C=32`); **scaling plots** + the knee/plateau finding per mode; **phase-breakdown** plots + narrative ("X% of work is bucket gzip+hash", etc., with the §2.4 caveat stated); **full-pubnet** results (remote vs local-engine, network-bound note); **correctness** confirmation (Stage 1 all green); and **observations/bottlenecks** + any recommendations.
+`docs/perf-report.md` containing: environment table; **headline table** (op × mode → wall, peak RSS, throughput, at default `-c=32`); **scaling plots** + the knee/plateau finding per mode; **phase-breakdown** plots + narrative ("X% of work is bucket gzip+hash", etc., with the §2.4 caveat stated); **full-pubnet** results (remote vs local-engine, network-bound note); **correctness** confirmation (Stage 1 all green); and **observations/bottlenecks** + any recommendations.
 
 ---
 
@@ -272,7 +272,7 @@ perf-results/
 cargo build --release && cp target/release/stellar-archivist bin/sa-clean
 cargo build --release --features perf-metrics && cp target/release/stellar-archivist bin/sa-perf
 # one measured run (harness wraps OS time + ps sampler)
-scripts/perf/run.sh <run-id> sa-clean scan "$SRC" --verify -C 32
+scripts/perf/run.sh <run-id> sa-clean scan "$SRC" --verify -c 32
 # scaling sweep + plots
 scripts/perf/scaling.sh "$FIX" && scripts/perf/plot.py perf-results/summary.csv
 ```

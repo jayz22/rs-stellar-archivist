@@ -4,7 +4,7 @@
 
 **Goal:** Build the feature-gated in-process instrumentation, the `corrupt-archive` tool, and the `scripts/perf/` harness that make `docs/perf-testing-plan.md` executable.
 
-**Architecture:** All perf code is gated behind a new `perf-metrics` cargo feature (off by default → compiled to no-ops → production/PR builds unaffected). A `metrics` module aggregates per-phase timing via atomics; RAII guards are inserted at hot-path boundaries. A separate `corrupt-archive` binary reuses the proven test corruption helpers. Shell scripts wrap runs with OS `time` + a `ps` RSS sampler and drive the `-C` sweep; a Python script plots CSV.
+**Architecture:** All perf code is gated behind a new `perf-metrics` cargo feature (off by default → compiled to no-ops → production/PR builds unaffected). A `metrics` module aggregates per-phase timing via atomics; RAII guards are inserted at hot-path boundaries. A separate `corrupt-archive` binary reuses the proven test corruption helpers. Shell scripts wrap runs with OS `time` + a `ps` RSS sampler and drive the `-c` sweep; a Python script plots CSV.
 
 **Tech Stack:** Rust (libc for `getrusage`, walkdir+rand for the corruption bin, flate2/sha2/stellar-xdr for re-encoding), bash, Python+matplotlib.
 
@@ -765,7 +765,7 @@ echo "$RID,$EXIT,$PEAK_MB,\"$PERF\"" >> "$ROOT/run.csv"
 echo "[$RID] exit=$EXIT peak_rss_mb(os)=$PEAK_MB  $PERF"
 ```
 
-- [ ] **Step 4: `scripts/perf/scaling.sh`** (sweep `-C` × modes × reps → summary.csv)
+- [ ] **Step 4: `scripts/perf/scaling.sh`** (sweep `-c` × modes × reps → summary.csv)
 
 ```bash
 #!/usr/bin/env bash
@@ -775,9 +775,9 @@ SRC="$1"; BIN="${2:-bin/sa-clean}"
 CS=(1 2 4 8 16 32 64); REPS=3
 echo "run_id,mode,concurrency,rep" > perf-results/summary_index.csv
 for C in "${CS[@]}"; do for R in $(seq 1 $REPS); do
-  scripts/perf/run.sh "scan_C${C}_r${R}"        "$BIN" scan   "$SRC" -C "$C"
-  scripts/perf/run.sh "scanverify_C${C}_r${R}"  "$BIN" scan   "$SRC" -C "$C" --verify
-  D=$(mktemp -d); scripts/perf/run.sh "mirror_C${C}_r${R}" "$BIN" mirror "$SRC" "file://$D" -C "$C"; rm -rf "$D"
+  scripts/perf/run.sh "scan_C${C}_r${R}"        "$BIN" scan   "$SRC" -c "$C"
+  scripts/perf/run.sh "scanverify_C${C}_r${R}"  "$BIN" scan   "$SRC" -c "$C" --verify
+  D=$(mktemp -d); scripts/perf/run.sh "mirror_C${C}_r${R}" "$BIN" mirror "$SRC" "file://$D" -c "$C"; rm -rf "$D"
 done; done
 echo "Done. Aggregate perf-results/*/headline.csv + run.csv, then: scripts/perf/plot.py"
 ```
@@ -802,7 +802,7 @@ for metric, idx, ylabel, fname in [("wall", 1, "wall time (ms)", "time_vs_concur
     for mode, pts in by_mode.items():
         pts = sorted(pts)
         plt.plot([p[0] for p in pts], [p[idx] for p in pts], marker="o", label=mode)
-    plt.xlabel("concurrency (-C)"); plt.ylabel(ylabel); plt.legend(); plt.grid(True)
+    plt.xlabel("concurrency (-c)"); plt.ylabel(ylabel); plt.legend(); plt.grid(True)
     plt.savefig(f"perf-results/plots/{fname}", dpi=120, bbox_inches="tight")
 print("wrote perf-results/plots/*.png")
 ```
