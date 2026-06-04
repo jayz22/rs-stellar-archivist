@@ -174,9 +174,13 @@ pub trait Operation: Send + Sync + 'static {
         src_store: &StorageRef,
         _dst_store: Option<&StorageRef>,
     ) -> Result<HistoryFetch, crate::storage::Error> {
-        Ok(HistoryFetch::Available(
-            download_buffer(src_store, history_path).await?,
-        ))
+        let buf = {
+            let _g = crate::phase!(crate::metrics::Phase::HistoryFetch);
+            download_buffer(src_store, history_path).await?
+        };
+        crate::metrics::add_bytes(crate::metrics::Phase::HistoryFetch, buf.len() as u64);
+        crate::metrics::record_file(buf.len() as u64);
+        Ok(HistoryFetch::Available(buf))
     }
 
     /// Write a fetched buffer (currently the history file) to the operation's
@@ -449,7 +453,11 @@ impl<Op: Operation> Pipeline<Op> {
             return None;
         };
 
-        match history_format::parse_history(&buffer, &history_path) {
+        let parse_result = {
+            let _g = crate::phase!(crate::metrics::Phase::HistoryParse);
+            history_format::parse_history(&buffer, &history_path)
+        };
+        match parse_result {
             Ok(state) => Some((state, buffer)),
             Err(e) => {
                 error!(

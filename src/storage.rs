@@ -101,6 +101,7 @@ pub trait Storage: Send + Sync {
     /// Streams data in chunks without buffering the entire file in memory.
     /// Only supported by writable backends (e.g., filesystem).
     async fn copy_from_reader(&self, object: &str, reader: Reader) -> Result<(), Error> {
+        let _g = crate::phase!(crate::metrics::Phase::Copy);
         let writer = self.open_writer(object).await?;
 
         // Convert reader to a stream of Buffer chunks (zero-copy)
@@ -117,6 +118,8 @@ pub trait Storage: Send + Sync {
         sink.close()
             .await
             .map_err(|e| from_opendal_error(e, &format!("Failed to close writer for {object}")))?;
+        crate::metrics::add_bytes(crate::metrics::Phase::Copy, 0);
+        crate::metrics::record_file(0);
         Ok(())
     }
 
@@ -741,13 +744,17 @@ impl Storage for OpendalStore {
     }
 
     async fn copy_from_reader(&self, object: &str, reader: Reader) -> Result<(), Error> {
+        let _g = crate::phase!(crate::metrics::Phase::Copy);
         // If we have a filesystem root and atomic writes are disabled, use direct tokio::fs writes
         // to bypass OpenDAL's WriteGenerator buffering and avoid the fsync in close().
         if let Some(root_path) = &self.root_path {
             if !self.atomic_file_writes {
-                return self
+                let result = self
                     .copy_from_reader_direct(root_path, object, reader)
                     .await;
+                crate::metrics::add_bytes(crate::metrics::Phase::Copy, 0);
+                crate::metrics::record_file(0);
+                return result;
             }
         }
 
@@ -769,6 +776,8 @@ impl Storage for OpendalStore {
         sink.close()
             .await
             .map_err(|e| from_opendal_error(e, &format!("Failed to close writer for {object}")))?;
+        crate::metrics::add_bytes(crate::metrics::Phase::Copy, 0);
+        crate::metrics::record_file(0);
         Ok(())
     }
 

@@ -239,6 +239,7 @@ impl XdrVerificationManager {
     /// No-op if no data was recorded for this checkpoint. If ledger data is
     /// missing but tx/result data exists, records a warning error.
     pub(crate) fn verify_and_release(&self, checkpoint: u32) {
+        let _g = crate::phase!(crate::metrics::Phase::CrossFileVerify);
         let data = {
             let mut pending = self.pending.lock().unwrap();
             pending.remove(&checkpoint)
@@ -534,6 +535,7 @@ impl XdrVerificationManager {
     /// Only checks adjacent checkpoints separated by exactly `CHECKPOINT_FREQUENCY` —
     /// non-consecutive checkpoints (from partial or bounded scans) are skipped.
     pub(crate) fn verify_checkpoint_chain(&self) {
+        let _g = crate::phase!(crate::metrics::Phase::ChainVerify);
         let boundaries = self.boundaries.lock().unwrap();
         let mut chain_errors = Vec::new();
 
@@ -622,6 +624,7 @@ pub(crate) fn parse_ledger_header_entries_for_checkpoint(
     decompressed_data: &[u8],
     checkpoint: Option<u32>,
 ) -> Result<BTreeMap<u32, LedgerHeaderVerificationData>, StorageError> {
+    let _g = crate::phase!(crate::metrics::Phase::XdrParseLedger);
     let cursor = Cursor::new(decompressed_data);
     let mut limited = Limited::new(cursor, Limits::none());
     let mut data = BTreeMap::new();
@@ -780,6 +783,7 @@ pub(crate) fn parse_result_entries_for_checkpoint(
     decompressed_data: &[u8],
     checkpoint: Option<u32>,
 ) -> Result<BTreeMap<u32, Hash>, StorageError> {
+    let _g = crate::phase!(crate::metrics::Phase::XdrParseResult);
     let cursor = Cursor::new(decompressed_data);
     let mut limited = Limited::new(cursor, Limits::none());
     let mut hashes = BTreeMap::new();
@@ -877,6 +881,7 @@ pub(crate) fn parse_transaction_entries_for_checkpoint(
     decompressed_data: &[u8],
     checkpoint: Option<u32>,
 ) -> Result<BTreeMap<u32, Hash>, StorageError> {
+    let _g = crate::phase!(crate::metrics::Phase::XdrParseTx);
     let cursor = Cursor::new(decompressed_data);
     let mut limited = Limited::new(cursor, Limits::none());
     let mut hashes = BTreeMap::new();
@@ -928,6 +933,7 @@ pub(crate) fn parse_transaction_entries_for_checkpoint(
 /// Validate SCP history XDR frame structure. Only checks that frames deserialize
 /// correctly — no hashes are computed or returned. Fatal error on malformed XDR.
 pub fn parse_scp_entries(decompressed_data: &[u8]) -> Result<(), StorageError> {
+    let _g = crate::phase!(crate::metrics::Phase::XdrParseScp);
     let cursor = Cursor::new(decompressed_data);
     let mut limited = Limited::new(cursor, Limits::none());
 
@@ -996,6 +1002,7 @@ async fn decompress_and_write_internal(
     reader: Reader,
     writer: Option<Writer>,
 ) -> Result<(Vec<u8>, Option<opendal::BufferSink>), StorageError> {
+    let _g = crate::phase!(crate::metrics::Phase::XdrDecompress);
     use futures_util::SinkExt;
 
     let stream = reader
@@ -1074,6 +1081,9 @@ async fn decompress_and_write_internal(
         .await
         .map_err(|e| StorageError::fatal(format!("decompress task panicked for {}: {}", path, e)))?
         .map_err(|e| StorageError::retry(format!("failed to decompress {}: {}", path, e)))?;
+
+    crate::metrics::add_bytes(crate::metrics::Phase::XdrDecompress, decompressed.len() as u64);
+    crate::metrics::record_file(decompressed.len() as u64);
 
     // Return the unclosed sink — caller is responsible for closing it only after
     // verification succeeds, preventing corrupt data from being committed on
