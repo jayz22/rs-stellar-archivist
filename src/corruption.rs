@@ -13,24 +13,30 @@ use walkdir::WalkDir;
 // Ported verbatim from src/tests/utils.rs (visibility widened to `pub`).
 //=============================================================================
 
-pub fn read_and_parse_ledger_file(path: &Path) -> Vec<stellar_xdr::curr::LedgerHeaderHistoryEntry> {
+/// Returns `None` if the file can't be read/decompressed/parsed — e.g. it was
+/// already corrupted by an earlier step in a multi-corruption run. Callers
+/// propagate the `None` so that corruption attempt is skipped rather than
+/// panicking on an already-broken file.
+pub fn read_and_parse_ledger_file(
+    path: &Path,
+) -> Option<Vec<stellar_xdr::curr::LedgerHeaderHistoryEntry>> {
     use flate2::read::GzDecoder;
     use std::io::Read as _;
     use stellar_xdr::curr::{Frame, LedgerHeaderHistoryEntry, Limited, Limits, ReadXdr};
 
-    let data = std::fs::read(path).expect("Failed to read ledger file");
+    let data = std::fs::read(path).ok()?;
     let mut decoder = GzDecoder::new(&data[..]);
     let mut decompressed = Vec::new();
-    decoder
-        .read_to_end(&mut decompressed)
-        .expect("Failed to decompress");
+    decoder.read_to_end(&mut decompressed).ok()?;
 
     let cursor = std::io::Cursor::new(&decompressed);
     let mut limited = Limited::new(cursor, Limits::none());
 
-    Frame::<LedgerHeaderHistoryEntry>::read_xdr_iter(&mut limited)
-        .map(|r| r.expect("Failed to parse ledger-header entry").0)
-        .collect()
+    let mut entries = Vec::new();
+    for r in Frame::<LedgerHeaderHistoryEntry>::read_xdr_iter(&mut limited) {
+        entries.push(r.ok()?.0);
+    }
+    Some(entries)
 }
 
 pub fn recompute_entry_hash(entry: &mut stellar_xdr::curr::LedgerHeaderHistoryEntry) {
@@ -76,8 +82,8 @@ pub fn write_ledger_header_entries_to_file(
 /// entry's own hash and the intra-checkpoint prev-hash chain are recomputed to
 /// stay valid. The result parses cleanly per-entry; the mismatch surfaces only
 /// during cross-file verification against the transactions/results files.
-pub fn corrupt_ledger_cross_file_hash(ledger_file: &Path, field: &str) {
-    let mut entries = read_and_parse_ledger_file(ledger_file);
+pub fn corrupt_ledger_cross_file_hash(ledger_file: &Path, field: &str) -> Option<()> {
+    let mut entries = read_and_parse_ledger_file(ledger_file)?;
     for i in 0..entries.len() {
         match field {
             "tx_set" => entries[i].header.scp_value.tx_set_hash = Hash([0xDE; 32]),
@@ -90,6 +96,7 @@ pub fn corrupt_ledger_cross_file_hash(ledger_file: &Path, field: &str) {
         recompute_entry_hash(&mut entries[i]);
     }
     write_ledger_header_entries_to_file(ledger_file, &entries);
+    Some(())
 }
 
 //=============================================================================
@@ -189,7 +196,7 @@ pub fn apply(archive: &Path, kind: &str, rng: &mut impl Rng) -> Option<Damage> {
         }
         "ledger-header-hash" => {
             let p = ledger_files().choose(rng)?.clone();
-            let mut es = read_and_parse_ledger_file(&p);
+            let mut es = read_and_parse_ledger_file(&p)?;
             if let Some(e) = es.get_mut(0) {
                 e.hash = Hash([0xDE; 32]);
             } // hash no longer matches header
@@ -200,31 +207,31 @@ pub fn apply(archive: &Path, kind: &str, rng: &mut impl Rng) -> Option<Damage> {
             // pick a multi-entry ledger file so completeness genuinely breaks
             let candidates: Vec<_> = ledger_files()
                 .into_iter()
-                .filter(|p| read_and_parse_ledger_file(p).len() > 1)
+                .filter(|p| read_and_parse_ledger_file(p).map_or(false, |e| e.len() > 1))
                 .collect();
             let p = candidates.choose(rng)?.clone();
-            let mut es = read_and_parse_ledger_file(&p);
+            let mut es = read_and_parse_ledger_file(&p)?;
             es.remove(es.len() / 2);
             write_ledger_header_entries_to_file(&p, &es);
             Some(mk(&p, kind))
         }
         "txset-hash" => {
             let p = ledger_files().choose(rng)?.clone();
-            corrupt_ledger_cross_file_hash(&p, "tx_set");
+            corrupt_ledger_cross_file_hash(&p, "tx_set")?;
             Some(mk(&p, kind))
         }
         "result-hash" => {
             let p = ledger_files().choose(rng)?.clone();
-            corrupt_ledger_cross_file_hash(&p, "result");
+            corrupt_ledger_cross_file_hash(&p, "result")?;
             Some(mk(&p, kind))
         }
         "intra-chain" => {
             let candidates: Vec<_> = ledger_files()
                 .into_iter()
-                .filter(|p| read_and_parse_ledger_file(p).len() > 1)
+                .filter(|p| read_and_parse_ledger_file(p).map_or(false, |e| e.len() > 1))
                 .collect();
             let p = candidates.choose(rng)?.clone();
-            let mut es = read_and_parse_ledger_file(&p);
+            let mut es = read_and_parse_ledger_file(&p)?;
             es[1].header.previous_ledger_hash = Hash([0xAB; 32]);
             recompute_entry_hash(&mut es[1]);
             write_ledger_header_entries_to_file(&p, &es);
@@ -236,7 +243,7 @@ pub fn apply(archive: &Path, kind: &str, rng: &mut impl Rng) -> Option<Damage> {
             let mut f = ledger_files();
             f.sort_by_key(|p| p.to_string_lossy().to_string());
             let p = f.last()?.clone();
-            let mut es = read_and_parse_ledger_file(&p);
+            let mut es = read_and_parse_ledger_file(&p)?;
             if let Some(e) = es.get_mut(0) {
                 e.header.previous_ledger_hash = Hash([0xCD; 32]);
                 recompute_entry_hash(e);
