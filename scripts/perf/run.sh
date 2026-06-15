@@ -7,7 +7,17 @@ set -o pipefail
 RID="$1"; BIN="$2"; shift 2
 ROOT="perf-results/$RID"; mkdir -p "$ROOT"
 export SA_PERF_OUT="$ROOT"
-echo "$BIN $*" > "$ROOT/cmd.txt"
+
+# Auto-inject --report into this run's dir unless the caller already passed one,
+# so every run keeps its own JSON report alongside the logs for later review.
+# (scan/mirror/repair all accept --report.)
+ARGS=("$@")
+HAS_REPORT=0
+for a in "${ARGS[@]}"; do [ "$a" = "--report" ] && HAS_REPORT=1 && break; done
+if [ "$HAS_REPORT" -eq 0 ]; then
+  ARGS+=(--report "$ROOT/report.json")
+fi
+echo "$BIN ${ARGS[*]}" > "$ROOT/cmd.txt"
 
 TIMER=(); RSS_DIV=1
 if [ "$(uname)" = "Darwin" ] && [ -x /usr/bin/time ]; then
@@ -16,7 +26,7 @@ elif [ -x /usr/bin/time ] && /usr/bin/time -v true >/dev/null 2>&1; then
   TIMER=(/usr/bin/time -v); RSS_DIV=1024              # GNU time: kbytes
 fi
 
-"${TIMER[@]}" "$BIN" "$@" >"$ROOT/stdout.log" 2>"$ROOT/stderr.log"
+"${TIMER[@]}" "$BIN" "${ARGS[@]}" >"$ROOT/stdout.log" 2>"$ROOT/stderr.log"
 EXIT=$?
 
 WALL=""; RSS=""; FILES=""; BYTES=""; MBPS=""
