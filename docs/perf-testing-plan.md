@@ -231,12 +231,23 @@ FIX=file:///data/perf/fixture
 > `high = (currentLedger+1)/64*64 - 1`, `low = high - 2000*64 + 1`. Lives on
 > `/data` per the disk note in §6.0.
 
-**Sweep** `-c ∈ {1,2,4,8,16,32,64}` (extend to 96/128 if not yet plateaued) across these modes:
+**Sweep** `-c ∈ {1,2,4,8,16,32,64}` (extend to 96/128 if not yet plateaued) across these **four** modes (a 2×2 of operation × verify):
 - `scan` (existence only), `scan --verify`
 - `mirror` (to a fresh empty dst each run), `mirror --verify`
-- `repair` (against a freshly corrupted copy of the fixture; same corruption seed each run), `repair --dry-run`
 
-For each (mode × `-c` × rep): record wall, peak RSS, throughput, exit code → `run.csv`; and one instrumented (`sa-perf`) run per (mode × `-c`) for `phases.csv`.
+> **Repair is intentionally NOT in the scaling sweep.** The 2×2 above isolates
+> the two axes a concurrency curve cares about: existence-vs-content-verify (the
+> decompress+hash CPU cost) and read-only-vs-read+write (scan vs mirror IO).
+> Repair adds neither a new axis nor a clean signal here: run *without* `--verify`
+> it detects only missing files, so its curve tracks plain scan; run *with*
+> `--verify` it tracks scan-verify plus a re-fetch tail. It also needs a fresh
+> 55 GB corrupted copy per cell, which dominates the cell with copy/corruption
+> setup rather than the thing we're measuring. Repair **correctness** is fully
+> covered in Stage 1 (§5, all 12 kinds), and repair **performance** is measured
+> in the full-pubnet stage (§6.2). Keeping it out of §6.1 makes the scaling
+> result clean and roughly halves the sweep's wall time.
+
+For each (mode × `-c` × rep): record wall, peak RSS, throughput, exit code → `run.csv`; and one instrumented (`sa-perf`) run per (mode × `-c`) for `phases.csv`. Run **3 reps** per cell (plan §6.0) and report the median plus min/max.
 
 **Plots** (`scripts/perf/plot.py`, matplotlib → PNG):
 - wall-time vs `-c`, one line per mode (find the knee / plateau).
