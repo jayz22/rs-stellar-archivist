@@ -202,14 +202,34 @@ Run 5.1–5.4 once on v1 (`testnet-archive-small`) and once on **v2** (`testnet-
 - **Repetitions:** run each configuration **3×**; report **median** (and min/max). Discard the first run if cold-cache effects dominate (note warm vs cold).
 - **Isolation:** quiet machine, AC power (laptops), no other heavy IO. For local-source tests, pre-warm the OS file cache once (or explicitly test cold vs warm and label it).
 - **No `--debug/--trace`** during perf runs.
+- **Disk: use the dedicated data volume, not the root/OS disk.** All large
+  fixtures, mirror destinations, repair copies, and harness temp dirs must live
+  on the big scratch volume (on the Ubuntu/Graviton host: the 14 TB RAID0 NVMe
+  mounted at `/data`, e.g. `/data/perf/...`). The root disk (~90 GB EBS) cannot
+  hold a 55 GB fixture, let alone the per-run copies the sweep makes, and EBS is
+  far slower than the instance-store NVMe — measuring on it would both run out
+  of space and distort IO numbers. Point `TMPDIR`/`mktemp` at the data volume
+  too (the default `/tmp` is on root).
 
 ### 6.1 Scaling test — time/RSS vs `-c` (local source, removes network noise)
 
 **Fixture:** a substantial **local** archive so concurrency has work to show. Create once by mirroring a bounded pubnet range locally (e.g. ~2,000 checkpoints), then use it read-only as `file://`:
 ```bash
-./bin/sa-clean mirror "$PUBNET" "file://$PWD/perf-results/fixture" --low <L> --high <H>
-FIX=file://$PWD/perf-results/fixture
+# Use a RECENT 2,000-checkpoint window, ending at the current tip — NOT the
+# first 2,000 checkpoints from genesis.
+./bin/sa-clean mirror "$PUBNET" "file:///data/perf/fixture" --low <L> --high <H>
+FIX=file:///data/perf/fixture
 ```
+> **Use the recent ~2,000 checkpoints, not the first ~2,000.** Two reasons:
+> (1) **Genesis pubnet predates SCP archival** — `scp-*.xdr.gz` files 404 for the
+> early range, so a plain mirror fails (exit 2) unless you pass `--skip-optional`,
+> and the fixture is then missing a whole file type the verify path should exercise.
+> (2) Early ledgers are nearly empty, so a genesis window is tiny (~50 MB) and
+> **won't stress concurrency** — the whole point of the scaling test. A recent
+> window has all five file types and realistic per-checkpoint sizes (≈55 GB for
+> 2,000 cp), which actually exercises `-c`. Pick the range from the live tip:
+> `high = (currentLedger+1)/64*64 - 1`, `low = high - 2000*64 + 1`. Lives on
+> `/data` per the disk note in §6.0.
 
 **Sweep** `-c ∈ {1,2,4,8,16,32,64}` (extend to 96/128 if not yet plateaued) across these modes:
 - `scan` (existence only), `scan --verify`
@@ -228,17 +248,18 @@ For each (mode × `-c` × rep): record wall, peak RSS, throughput, exit code →
 **⚠️ Large:** hundreds of GB of disk, many hours. Ensure disk headroom; run in `tmux`/`nohup`. Mirror is resumable (re-running continues); the harness logs progress and can resume.
 
 Order (mirror first so scan/repair can optionally use the local copy too):
+All paths on the dedicated data volume (`/data`), never the root disk — see the disk note in §6.0.
 ```bash
-DST=file:///big/disk/pubnet-mirror
+DST=file:///data/pubnet-mirror
 # 1) MIRROR (downloads everything)
 time-wrap ./bin/sa-clean mirror "$PUBNET" "$DST" -c 32 --report mirror.json
 # 2) SCAN remote (existence) and SCAN remote --verify
 time-wrap ./bin/sa-clean scan "$PUBNET" -c 32 --report scan.json
 time-wrap ./bin/sa-clean scan "$PUBNET" -c 32 --verify --report scan-verify.json
 # 3) REPAIR: corrupt a copy of the local mirror, repair from remote
-./bin/corrupt-archive /big/disk/pubnet-copy --kinds all --count <K> --manifest c.json
-time-wrap ./bin/sa-clean repair "$PUBNET" file:///big/disk/pubnet-copy -c 32 --verify --report repair.json
-time-wrap ./bin/sa-clean repair "$PUBNET" file:///big/disk/pubnet-copy -c 32 --dry-run --report plan.json
+./bin/corrupt-archive /data/pubnet-copy --kinds all --count <K> --manifest c.json
+time-wrap ./bin/sa-clean repair "$PUBNET" file:///data/pubnet-copy -c 32 --verify --report repair.json
+time-wrap ./bin/sa-clean repair "$PUBNET" file:///data/pubnet-copy -c 32 --dry-run --report plan.json
 ```
 Capture for each: wall, peak RSS, throughput (MB/s, files/s), the phase breakdown (one `sa-perf` run; for the very longest, `sa-perf` mirror may be skipped if overhead is a concern — note it), and the `ps` RSS time-series. **Remote runs are network-bound** — explicitly note measured bandwidth so CPU/IO bottlenecks aren't confused with network limits. Re-run the scan/repair against the **local** full mirror (`file://`) to get the network-free engine numbers for comparison.
 
