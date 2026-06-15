@@ -10,3 +10,4 @@
 **/testnet-archive-v2/**
 /perf-results/
 /bin/
+/local-test/stellar-archivist
