@@ -17,6 +17,7 @@
 use crate::history_format::{is_checkpoint, is_valid_bucket_hash};
 use crate::utils::{hex_to_hash, FailureTracker, FileFlags};
 use crate::xdr_verify::HashExt;
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -213,11 +214,14 @@ fn summary_of(failures: &FailureTracker, succeeded: u64, skipped: u64, retries: 
 }
 
 /// A multi-section report: named sections (e.g. repair's `main_pass` /
-/// `file_retry` / `checkpoint_retry`) in one file.
+/// `file_retry` / `checkpoint_retry`) in one file. `sections` is an
+/// [`IndexMap`] so the JSON preserves the logical stage order it is built in
+/// (`main_pass` → `file_retry` → `checkpoint_retry`) rather than re-sorting the
+/// keys alphabetically.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MultiSectionReport {
     pub version: u32,
-    pub sections: BTreeMap<String, ReportSection>,
+    pub sections: IndexMap<String, ReportSection>,
 }
 
 /// Build one section from a stats' failures + counters (same projection as a

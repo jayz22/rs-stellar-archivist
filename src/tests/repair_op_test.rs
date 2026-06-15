@@ -2055,6 +2055,14 @@ async fn test_repair_report_three_sections_clean_on_success() {
         serde_json::from_str(&json).expect("multi-section report parses");
     assert!(report.sections.contains_key("main_pass"));
 
+    // Sections must appear in logical stage order, not alphabetical: the JSON a
+    // human reads should be main_pass -> file_retry -> checkpoint_retry.
+    let pos = |k: &str| json.find(k).unwrap_or_else(|| panic!("section {k} present"));
+    assert!(
+        pos("main_pass") < pos("file_retry") && pos("file_retry") < pos("checkpoint_retry"),
+        "report sections out of logical order:\n{json}"
+    );
+
     // Retry stages cleared everything they attempted: empty bodies, no failures.
     let fr = &report.sections["file_retry"];
     let cr = &report.sections["checkpoint_retry"];
