@@ -45,3 +45,21 @@ async fn maybe_flush_triggers_on_interval_and_flush_now_writes_interrupted() {
     let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(v["run_status"], "interrupted");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn maybe_flush_triggers_on_time_backstop() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("r.json");
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let cp = Checkpointer::new(
+        path.clone(),
+        /*interval*/ 0,                                   // count gate OFF
+        /*backstop*/ std::time::Duration::from_millis(1),
+        /*total*/ 4,
+        counting_render(calls.clone()),
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await; // exceed backstop
+    cp.maybe_flush(2).await; // interval=0 so only the time gate can fire
+    assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+    assert!(path.exists());
+}

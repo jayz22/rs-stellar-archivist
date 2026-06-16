@@ -19,16 +19,16 @@ pub type RenderFn = std::sync::Arc<
 
 pub struct Checkpointer {
     report_path: PathBuf,
-    interval: usize,   // flush every N completed checkpoints (0 = off)
+    interval: usize,    // flush every N completed checkpoints (0 = off)
     backstop: Duration, // also flush if >= this since last write
-    total: AtomicU64,  // total checkpoints (for Progress); set via set_total
+    total: AtomicU64,   // total checkpoints (for Progress); set via set_total
     render: RenderFn,
-    last_completed: AtomicU64,
-    inner: Mutex<Inner>, // serializes writes + holds last-flush instant
+    inner: Mutex<Inner>, // serializes writes + holds last-flush instant + last_completed
 }
 
 struct Inner {
     last_flush_at: Instant,
+    last_completed: u64,
 }
 
 impl Checkpointer {
@@ -45,9 +45,9 @@ impl Checkpointer {
             backstop,
             total: AtomicU64::new(total),
             render,
-            last_completed: AtomicU64::new(0),
             inner: Mutex::new(Inner {
                 last_flush_at: Instant::now(),
+                last_completed: 0,
             }),
         }
     }
@@ -58,29 +58,37 @@ impl Checkpointer {
 
     /// Periodic driver: flush if the interval was crossed or the time backstop
     /// elapsed. Cheap and safe to call from every checkpoint completion.
+    /// The flush decision and `last_completed` update happen under a single
+    /// lock acquisition to prevent TOCTOU races in concurrent callers.
     pub async fn maybe_flush(&self, completed: usize) {
+        let mut inner = self.inner.lock().await;
         let due_by_count = self.interval > 0
-            && completed as u64
-                >= self.last_completed.load(Ordering::Relaxed) + self.interval as u64;
-        if !due_by_count {
-            let inner = self.inner.lock().await;
-            if inner.last_flush_at.elapsed() < self.backstop {
-                return;
-            }
-            drop(inner);
+            && completed as u64 >= inner.last_completed + self.interval as u64;
+        let due_by_time = inner.last_flush_at.elapsed() >= self.backstop;
+        if !due_by_count && !due_by_time {
+            return;
         }
-        let _ = self.flush(RunStatus::Interrupted, completed as u64).await;
-        self.last_completed.store(completed as u64, Ordering::Relaxed);
+        let _ = self
+            .flush_locked(&mut inner, RunStatus::Interrupted, completed as u64)
+            .await;
     }
 
     /// Force a flush (signal handler). Uses the last-seen completed count.
     pub async fn flush_now(&self, status: RunStatus) -> Result<(), ReportError> {
-        let completed = self.last_completed.load(Ordering::Relaxed);
-        self.flush(status, completed).await
+        let mut inner = self.inner.lock().await;
+        let completed = inner.last_completed;
+        self.flush_locked(&mut inner, status, completed).await
     }
 
-    async fn flush(&self, status: RunStatus, completed: u64) -> Result<(), ReportError> {
-        let mut inner = self.inner.lock().await; // serialize writes
+    /// Write the report while the caller already holds the `inner` lock.
+    /// Updates `inner.last_flush_at` and `inner.last_completed` on success.
+    /// Must NOT re-acquire `self.inner` — callers hold it.
+    async fn flush_locked(
+        &self,
+        inner: &mut Inner,
+        status: RunStatus,
+        completed: u64,
+    ) -> Result<(), ReportError> {
         let progress = Progress {
             processed_checkpoints: completed,
             total_checkpoints: self.total.load(Ordering::Relaxed),
@@ -94,6 +102,7 @@ impl Checkpointer {
             return Err(e);
         }
         inner.last_flush_at = Instant::now();
+        inner.last_completed = completed;
         Ok(())
     }
 }
