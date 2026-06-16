@@ -417,9 +417,12 @@ impl RepairOperation {
     /// to: single-file retry has no siblings loaded to cross-check, and any cp
     /// with a real cross-file/chain inconsistency is in `failures.checkpoints`,
     /// handled by [`Self::retry_failed_checkpoints`].
-    pub(crate) async fn retry_failed_files(&self, parent_stats: &ArchiveStats) -> ArchiveStats {
+    pub(crate) async fn retry_failed_files(
+        &self,
+        parent_stats: &ArchiveStats,
+    ) -> std::sync::Arc<ArchiveStats> {
         if self.dry_run {
-            return ArchiveStats::new();
+            return std::sync::Arc::new(ArchiveStats::new());
         }
 
         // One snapshot of the main pass's failures drives both the work list
@@ -430,7 +433,7 @@ impl RepairOperation {
         let known_broken = parent_stats.failures.lock().await.clone();
         let work = build_failed_files_work_list(&known_broken);
         if work.is_empty() {
-            return ArchiveStats::new();
+            return std::sync::Arc::new(ArchiveStats::new());
         }
 
         info!("Retrying {} failed file(s)", work.len());
@@ -468,9 +471,9 @@ impl RepairOperation {
     pub(crate) async fn retry_failed_checkpoints(
         &self,
         parent_stats: &ArchiveStats,
-    ) -> ArchiveStats {
+    ) -> std::sync::Arc<ArchiveStats> {
         if self.dry_run {
-            return ArchiveStats::new();
+            return std::sync::Arc::new(ArchiveStats::new());
         }
 
         let retry_cps: Vec<u32> = {
@@ -478,7 +481,7 @@ impl RepairOperation {
             f.checkpoints.iter().copied().collect()
         };
         if retry_cps.is_empty() {
-            return ArchiveStats::new();
+            return std::sync::Arc::new(ArchiveStats::new());
         }
 
         info!(

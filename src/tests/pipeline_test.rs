@@ -307,6 +307,18 @@ async fn test_run_checkpoints_respects_concurrency() {
     );
 }
 
+/// Compile-time assertion: `Pipeline::into_stats` must return `Arc<ArchiveStats>`.
+///
+/// This test has no runtime body — it only needs to compile. If the return
+/// type ever regresses back to a bare `ArchiveStats`, the function body
+/// below will produce a type-mismatch error.
+#[test]
+fn pipeline_into_stats_returns_arc() {
+    fn _assert(p: crate::pipeline::Pipeline<crate::scan_operation::ScanOperation>) {
+        let _: std::sync::Arc<crate::utils::ArchiveStats> = p.into_stats();
+    }
+}
+
 #[tokio::test]
 async fn test_stats_accessor_returns_live_ref() {
     let (op, _state) = TestOperation::new((0, 0));

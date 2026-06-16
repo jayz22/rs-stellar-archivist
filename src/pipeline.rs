@@ -228,7 +228,7 @@ pub struct Pipeline<Op: Operation> {
     config: PipelineConfig,
     src_store: StorageRef,
     dst_store: Option<StorageRef>,
-    stats: ArchiveStats,
+    stats: std::sync::Arc<ArchiveStats>,
     /// Hash → () presence cache used by `process_buckets` to skip buckets
     /// already seen elsewhere in this pipeline run.
     bucket_lru: Mutex<LruCache<String, ()>>,
@@ -264,7 +264,7 @@ impl<Op: Operation> Pipeline<Op> {
             config,
             src_store,
             dst_store,
-            stats: ArchiveStats::new(),
+            stats: std::sync::Arc::new(ArchiveStats::new()),
             bucket_lru,
             verification_manager,
             report_path,
@@ -276,6 +276,15 @@ impl<Op: Operation> Pipeline<Op> {
     /// pipeline's stats after `run_checkpoints` returns.
     pub fn stats(&self) -> &ArchiveStats {
         &self.stats
+    }
+
+    /// Clone the `Arc` wrapping the pipeline's `ArchiveStats`, giving the
+    /// caller a shared handle that stays live even after the pipeline is
+    /// consumed. Intended for signal-handler / checkpointer integration
+    /// (Task 6+), where an external thread needs to observe or flush stats
+    /// concurrently with the pipeline.
+    pub fn stats_arc(&self) -> std::sync::Arc<ArchiveStats> {
+        self.stats.clone()
     }
 
     /// Full pipeline run — consumes the pipeline.
@@ -362,8 +371,12 @@ impl<Op: Operation> Pipeline<Op> {
             .await
     }
 
-    /// Consume the pipeline and return its `ArchiveStats`
-    pub fn into_stats(self) -> ArchiveStats {
+    /// Consume the pipeline and return its `Arc<ArchiveStats>`.
+    ///
+    /// Returns an `Arc` rather than a bare `ArchiveStats` so callers can share
+    /// the same stats across threads (e.g. a signal handler or checkpointer
+    /// that holds its own `Arc` clone before the pipeline is consumed).
+    pub fn into_stats(self) -> std::sync::Arc<ArchiveStats> {
         let Self { stats, .. } = self;
         stats
     }
