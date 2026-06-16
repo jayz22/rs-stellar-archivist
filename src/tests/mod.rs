@@ -1,4 +1,6 @@
 #[cfg(test)]
+mod checkpoint_test;
+#[cfg(test)]
 mod cli_validation_test;
 #[cfg(all(test, feature = "corruption-tool"))]
 mod corruption_test;
