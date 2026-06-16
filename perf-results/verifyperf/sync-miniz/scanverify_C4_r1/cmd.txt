@@ -1,0 +1,1 @@
+bin/sa-perf-sync scan file:///data/perf/fixture -c 4 --verify --low 62918015 --high 63046015 --report perf-results/verifyperf/sync-miniz/scanverify_C4_r1/report.json

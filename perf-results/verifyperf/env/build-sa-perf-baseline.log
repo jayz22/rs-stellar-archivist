@@ -1,0 +1,11 @@
+cargo: cargo 1.96.0 (30a34c682 2026-05-25)
+=== building sa-perf (release + perf-metrics) ===
+   Compiling hyper-util v0.1.16
+   Compiling tokio-rustls v0.26.4
+   Compiling hyper-rustls v0.27.7
+   Compiling reqwest v0.12.28
+   Compiling reqsign v0.16.5
+   Compiling opendal v0.55.0
+   Compiling stellar-archivist v0.1.0 (/home/jay/Projects/rs-stellar-archivist-verifyperf)
+    Finished `release` profile [optimized] target(s) in 1m 02s
+OK sa-perf: -rwxr-xr-x 1 jay staff 17191216 Jun 16 16:03 bin/sa-perf

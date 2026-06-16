@@ -1,0 +1,35 @@
+PERF wall_ms=786938 peak_rss_mb=1111.4 files=26464 bytes=183090530373 mb_per_s=232.7
+PERF_PHASE history_fetch,367.6,0.0,2001,12.0
+PERF_PHASE history_parse,297.0,0.0,2001,0.0
+PERF_PHASE bucket_stream,1204499.0,66.3,16459,135949.2
+PERF_PHASE xdr_decompress,150096.0,8.3,8004,47129.4
+PERF_PHASE xdr_parse_ledger,460.4,0.0,2001,0.0
+PERF_PHASE xdr_parse_tx,367033.3,20.2,2001,0.0
+PERF_PHASE xdr_parse_result,91117.3,5.0,2001,0.0
+PERF_PHASE xdr_parse_scp,1609.6,0.1,2001,0.0
+PERF_PHASE cross_file_verify,46.9,0.0,2001,0.0
+PERF_PHASE chain_verify,0.2,0.0,1,0.0
+PERF_PHASE copy,0.0,0.0,0,0.0
+	Command being timed: "bin/sa-perf-zng scan file:///data/perf/fixture -c 1 --verify --low 62918015 --high 63046015 --report perf-results/verifyperf/zlib-ng/scanverify_C1_r1/report.json"
+	User time (seconds): 1380.04
+	System time (seconds): 31.90
+	Percent of CPU this job got: 179%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 13:06.98
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 1085392
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 7145171
+	Voluntary context switches: 223246
+	Involuntary context switches: 10199
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 376
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

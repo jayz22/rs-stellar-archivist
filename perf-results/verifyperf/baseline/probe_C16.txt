@@ -1,0 +1,35 @@
+--- probe sample 1 (t~120s) ---
+target : pid 1368832 (sa-perf), 67 threads, 32 cores
+sys CPU : 10.4% busy / 89.6% idle  (~3.3 of 32 cores)
+proc CPU: 56%  (0.56 cores-equiv, over 5.0s)
+loadavg : 2.65 3.20 2.77  (CPU-bound on 32 cores => load ~32)
+proc RSS: 248 MB (current, not peak)
+verdict: low sys-CPU% + steady I/O => I/O/network-bound; sys-CPU% ~= 100%*cores => CPU-bound.
+--- probe sample 2 (t~180s) ---
+target : pid 1368832 (sa-perf), 67 threads, 32 cores
+sys CPU : 14.2% busy / 85.8% idle  (~4.5 of 32 cores)
+proc CPU: 69%  (0.69 cores-equiv, over 5.0s)
+loadavg : 4.05 3.50 2.90  (CPU-bound on 32 cores => load ~32)
+proc RSS: 247 MB (current, not peak)
+verdict: low sys-CPU% + steady I/O => I/O/network-bound; sys-CPU% ~= 100%*cores => CPU-bound.
+--- probe sample 3 (t~240s) ---
+target : pid 1368832 (sa-perf), 67 threads, 32 cores
+sys CPU : 13.1% busy / 86.9% idle  (~4.2 of 32 cores)
+proc CPU: 60%  (0.60 cores-equiv, over 5.0s)
+loadavg : 4.48 3.77 3.03  (CPU-bound on 32 cores => load ~32)
+proc RSS: 248 MB (current, not peak)
+verdict: low sys-CPU% + steady I/O => I/O/network-bound; sys-CPU% ~= 100%*cores => CPU-bound.
+--- probe sample 4 (t~300s) ---
+target : pid 1368832 (sa-perf), 67 threads, 32 cores
+sys CPU : 11.3% busy / 88.7% idle  (~3.6 of 32 cores)
+proc CPU: 61%  (0.61 cores-equiv, over 5.0s)
+loadavg : 2.93 3.47 2.98  (CPU-bound on 32 cores => load ~32)
+proc RSS: 248 MB (current, not peak)
+verdict: low sys-CPU% + steady I/O => I/O/network-bound; sys-CPU% ~= 100%*cores => CPU-bound.
+--- probe sample 5 (t~360s) ---
+target : pid 1368832 (sa-perf), 67 threads, 32 cores
+sys CPU : 11.9% busy / 88.1% idle  (~3.8 of 32 cores)
+proc CPU: 67%  (0.67 cores-equiv, over 5.0s)
+loadavg : 2.50 3.26 2.93  (CPU-bound on 32 cores => load ~32)
+proc RSS: 248 MB (current, not peak)
+verdict: low sys-CPU% + steady I/O => I/O/network-bound; sys-CPU% ~= 100%*cores => CPU-bound.

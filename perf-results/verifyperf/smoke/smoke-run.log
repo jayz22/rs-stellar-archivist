@@ -1,0 +1,48 @@
+sa-perf: [2m2026-06-16T16:50:31.311962Z[0m [32m INFO[0m Starting scan of file:///data/perf/fixture
+[2m2026-06-16T16:50:31.311987Z[0m [32m INFO[0m Scanning from ledger 62918015 onwards
+[2m2026-06-16T16:50:31.311993Z[0m [32m INFO[0m Scanning up to checkpoint 62950000
+[2m2026-06-16T16:50:31.313697Z[0m [32m INFO[0m Processing 501 checkpoints from 62918015 (0x03c00d7f) to 62950015 (0x03c08a7f)
+[2m2026-06-16T16:51:01.426627Z[0m [32m INFO[0m Progress: 100/501 checkpoints processed
+[2m2026-06-16T16:51:24.960278Z[0m [32m INFO[0m Progress: 200/501 checkpoints processed
+[2m2026-06-16T16:51:48.922828Z[0m [32m INFO[0m Progress: 300/501 checkpoints processed
+[2m2026-06-16T16:52:14.507399Z[0m [32m INFO[0m Progress: 400/501 checkpoints processed
+[2m2026-06-16T16:52:41.605490Z[0m [32m INFO[0m Progress: 500/501 checkpoints processed
+[2m2026-06-16T16:53:07.517160Z[0m [32m INFO[0m Progress: 501/501 checkpoints processed
+[2m2026-06-16T16:53:07.517232Z[0m [32m INFO[0m Scan complete: 6492 files found, 0 missing
+exit=0  summary={'succeeded': 6492, 'skipped': 0, 'failed': 0, 'retries': 0}
+sa-perf-zrs: [2m2026-06-16T16:53:07.724866Z[0m [32m INFO[0m Starting scan of file:///data/perf/fixture
+[2m2026-06-16T16:53:07.724891Z[0m [32m INFO[0m Scanning from ledger 62918015 onwards
+[2m2026-06-16T16:53:07.724895Z[0m [32m INFO[0m Scanning up to checkpoint 62950000
+[2m2026-06-16T16:53:07.726542Z[0m [32m INFO[0m Processing 501 checkpoints from 62918015 (0x03c00d7f) to 62950015 (0x03c08a7f)
+[2m2026-06-16T16:53:36.888121Z[0m [32m INFO[0m Progress: 100/501 checkpoints processed
+[2m2026-06-16T16:54:00.974309Z[0m [32m INFO[0m Progress: 200/501 checkpoints processed
+[2m2026-06-16T16:54:23.219920Z[0m [32m INFO[0m Progress: 300/501 checkpoints processed
+[2m2026-06-16T16:54:48.773266Z[0m [32m INFO[0m Progress: 400/501 checkpoints processed
+[2m2026-06-16T16:55:15.427158Z[0m [32m INFO[0m Progress: 500/501 checkpoints processed
+[2m2026-06-16T16:55:38.406965Z[0m [32m INFO[0m Progress: 501/501 checkpoints processed
+[2m2026-06-16T16:55:38.407047Z[0m [32m INFO[0m Scan complete: 6492 files found, 0 missing
+exit=0  summary={'succeeded': 6492, 'skipped': 0, 'failed': 0, 'retries': 0}
+sa-perf-cf: [2m2026-06-16T16:55:38.629769Z[0m [32m INFO[0m Starting scan of file:///data/perf/fixture
+[2m2026-06-16T16:55:38.629794Z[0m [32m INFO[0m Scanning from ledger 62918015 onwards
+[2m2026-06-16T16:55:38.629800Z[0m [32m INFO[0m Scanning up to checkpoint 62950000
+[2m2026-06-16T16:55:38.631510Z[0m [32m INFO[0m Processing 501 checkpoints from 62918015 (0x03c00d7f) to 62950015 (0x03c08a7f)
+[2m2026-06-16T16:56:07.959881Z[0m [32m INFO[0m Progress: 100/501 checkpoints processed
+[2m2026-06-16T16:56:32.263939Z[0m [32m INFO[0m Progress: 200/501 checkpoints processed
+[2m2026-06-16T16:56:54.853450Z[0m [32m INFO[0m Progress: 300/501 checkpoints processed
+[2m2026-06-16T16:57:20.691450Z[0m [32m INFO[0m Progress: 400/501 checkpoints processed
+[2m2026-06-16T16:57:46.240185Z[0m [32m INFO[0m Progress: 500/501 checkpoints processed
+[2m2026-06-16T16:58:09.321714Z[0m [32m INFO[0m Progress: 501/501 checkpoints processed
+[2m2026-06-16T16:58:09.321786Z[0m [32m INFO[0m Scan complete: 6492 files found, 0 missing
+exit=0  summary={'succeeded': 6492, 'skipped': 0, 'failed': 0, 'retries': 0}
+sa-perf-zng: [2m2026-06-16T16:58:09.552965Z[0m [32m INFO[0m Starting scan of file:///data/perf/fixture
+[2m2026-06-16T16:58:09.552991Z[0m [32m INFO[0m Scanning from ledger 62918015 onwards
+[2m2026-06-16T16:58:09.553010Z[0m [32m INFO[0m Scanning up to checkpoint 62950000
+[2m2026-06-16T16:58:09.554662Z[0m [32m INFO[0m Processing 501 checkpoints from 62918015 (0x03c00d7f) to 62950015 (0x03c08a7f)
+[2m2026-06-16T16:58:38.596757Z[0m [32m INFO[0m Progress: 100/501 checkpoints processed
+[2m2026-06-16T16:59:03.127443Z[0m [32m INFO[0m Progress: 200/501 checkpoints processed
+[2m2026-06-16T16:59:26.067739Z[0m [32m INFO[0m Progress: 300/501 checkpoints processed
+[2m2026-06-16T16:59:51.658378Z[0m [32m INFO[0m Progress: 400/501 checkpoints processed
+[2m2026-06-16T17:00:18.245766Z[0m [32m INFO[0m Progress: 500/501 checkpoints processed
+[2m2026-06-16T17:00:41.316981Z[0m [32m INFO[0m Progress: 501/501 checkpoints processed
+[2m2026-06-16T17:00:41.317066Z[0m [32m INFO[0m Scan complete: 6492 files found, 0 missing
+exit=0  summary={'succeeded': 6492, 'skipped': 0, 'failed': 0, 'retries': 0}

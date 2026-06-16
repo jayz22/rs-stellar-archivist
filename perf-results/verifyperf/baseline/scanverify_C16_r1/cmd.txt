@@ -1,0 +1,1 @@
+bin/sa-perf scan file:///data/perf/fixture -c 16 --verify --low 62918015 --high 63046015 --report perf-results/verifyperf/baseline/scanverify_C16_r1/report.json

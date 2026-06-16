@@ -1,0 +1,20 @@
+=== building sa-perf-zrs (perf-metrics,fast-zlib-rs) ===
+   Compiling async-compression v0.4.37
+   Compiling stellar-archivist v0.1.0 (/home/jay/Projects/rs-stellar-archivist-verifyperf)
+    Finished `release` profile [optimized] target(s) in 37.15s
+  -> sa-perf-zrs 17197216 bytes
+=== building sa-perf-cf (perf-metrics,fast-zlib-cf) ===
+   Compiling async-compression v0.4.37
+   Compiling stellar-archivist v0.1.0 (/home/jay/Projects/rs-stellar-archivist-verifyperf)
+    Finished `release` profile [optimized] target(s) in 38.50s
+  -> sa-perf-cf 17192112 bytes
+=== building sa-perf-zng (perf-metrics,fast-zlib-ng) ===
+   Compiling async-compression v0.4.37
+   Compiling stellar-archivist v0.1.0 (/home/jay/Projects/rs-stellar-archivist-verifyperf)
+    Finished `release` profile [optimized] target(s) in 39.18s
+  -> sa-perf-zng 17197040 bytes
+ALL BUILDS DONE
+-rwxr-xr-x 1 jay staff 17191216 Jun 16 16:03 bin/sa-perf
+-rwxr-xr-x 1 jay staff 17192112 Jun 16 16:48 bin/sa-perf-cf
+-rwxr-xr-x 1 jay staff 17197040 Jun 16 16:49 bin/sa-perf-zng
+-rwxr-xr-x 1 jay staff 17197216 Jun 16 16:48 bin/sa-perf-zrs

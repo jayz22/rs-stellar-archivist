@@ -1,0 +1,35 @@
+PERF wall_ms=483343 peak_rss_mb=2408.5 files=26464 bytes=183090530373 mb_per_s=378.8
+PERF_PHASE history_fetch,2690462.6,5.8,2001,12.0
+PERF_PHASE history_parse,269.7,0.0,2001,0.0
+PERF_PHASE bucket_stream,29951736.6,64.7,16459,135949.2
+PERF_PHASE xdr_decompress,13153525.0,28.4,8004,47129.4
+PERF_PHASE xdr_parse_ledger,473.5,0.0,2001,0.0
+PERF_PHASE xdr_parse_tx,373641.4,0.8,2001,0.0
+PERF_PHASE xdr_parse_result,92469.1,0.2,2001,0.0
+PERF_PHASE xdr_parse_scp,1568.4,0.0,2001,0.0
+PERF_PHASE cross_file_verify,43.5,0.0,2001,0.0
+PERF_PHASE chain_verify,0.5,0.0,1,0.0
+PERF_PHASE copy,0.0,0.0,0,0.0
+	Command being timed: "bin/sa-perf-sync scan file:///data/perf/fixture -c 16 --verify --low 62918015 --high 63046015 --report perf-results/verifyperf/sync-miniz/scanverify_C16_r1/report.json"
+	User time (seconds): 1520.69
+	System time (seconds): 37.62
+	Percent of CPU this job got: 322%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 8:03.55
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 2352004
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 9180729
+	Voluntary context switches: 271961
+	Involuntary context switches: 24243
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 248
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

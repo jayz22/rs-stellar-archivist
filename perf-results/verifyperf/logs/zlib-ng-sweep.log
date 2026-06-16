@@ -1,0 +1,6 @@
+start: 17:01:25
+[verifyperf/zlib-ng/scanverify_C1_r1] exit=0 wall_ms=786938 rss_mb=1111.4 (os=1060.0) files=26464
+[verifyperf/zlib-ng/scanverify_C4_r1] exit=0 wall_ms=480937 rss_mb=1774.5 (os=1692.3) files=26464
+[verifyperf/zlib-ng/scanverify_C16_r1] exit=0 wall_ms=487455 rss_mb=1696.0 (os=1617.5) files=26464
+subsweep [verifyperf/zlib-ng] done
+end: 17:30:41

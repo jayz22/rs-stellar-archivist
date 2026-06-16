@@ -1,0 +1,21 @@
+# Backend wiring per binary (cargo tree), captured 2026-06-16T17:37:44Z
+# Confirms which gzip backend each bin/sa-perf* binary actually links.
+## variant=baseline-miniz  (build features: perf-metrics)
+flate2 features: miniz_oxide rust_backend 
+  backend crate linked: miniz_oxide v0.8.9
+
+## variant=fast-zlib-rs  (build features: perf-metrics,fast-zlib-rs)
+flate2 features: any_zlib miniz_oxide rust_backend zlib-rs 
+  backend crate linked: miniz_oxide v0.8.9
+  backend crate linked: zlib-rs v0.6.3
+
+## variant=fast-zlib-cf  (build features: perf-metrics,fast-zlib-cf)
+flate2 features: any_c_zlib any_zlib cloudflare_zlib miniz_oxide rust_backend 
+  backend crate linked: miniz_oxide v0.8.9
+  backend crate linked: cloudflare-zlib-sys v0.3.7
+
+## variant=fast-zlib-ng  (build features: perf-metrics,fast-zlib-ng)
+flate2 features: any_c_zlib any_zlib miniz_oxide rust_backend zlib-ng 
+  backend crate linked: miniz_oxide v0.8.9
+  backend crate linked: libz-ng-sys v1.1.29
+

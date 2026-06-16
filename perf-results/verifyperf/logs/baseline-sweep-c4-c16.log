@@ -1,0 +1,5 @@
+start: 16:24:24
+[verifyperf/baseline/scanverify_C4_r1] exit=0 wall_ms=480091 rss_mb=1354.9 (os=1292.2) files=26464
+[verifyperf/baseline/scanverify_C16_r1] exit=0 wall_ms=486593 rss_mb=2059.5 (os=1964.1) files=26464
+subsweep [verifyperf/baseline] done
+end: 16:40:31

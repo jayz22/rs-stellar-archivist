@@ -1,0 +1,12 @@
+PERF wall_ms=483059 peak_rss_mb=2647.2 files=26464 bytes=183090530373 mb_per_s=379.0
+PERF_PHASE history_fetch,2789583.0,6.1,2001,12.0
+PERF_PHASE history_parse,268.7,0.0,2001,0.0
+PERF_PHASE bucket_stream,29321598.1,63.7,16459,135949.2
+PERF_PHASE xdr_decompress,13473652.4,29.3,8004,47129.4
+PERF_PHASE xdr_parse_ledger,475.8,0.0,2001,0.0
+PERF_PHASE xdr_parse_tx,373657.8,0.8,2001,0.0
+PERF_PHASE xdr_parse_result,92074.4,0.2,2001,0.0
+PERF_PHASE xdr_parse_scp,1567.1,0.0,2001,0.0
+PERF_PHASE cross_file_verify,46.9,0.0,2001,0.0
+PERF_PHASE chain_verify,0.4,0.0,1,0.0
+PERF_PHASE copy,0.0,0.0,0,0.0
