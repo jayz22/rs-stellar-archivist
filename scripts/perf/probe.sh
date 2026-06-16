@@ -27,7 +27,20 @@ PAT="${1:-sa-perf|sa-clean|stellar-archivist|corrupt-archive}"
 DIR="${2:-}"; INT="${3:-5}"
 NCPU=$(nproc); CLK=$(getconf CLK_TCK)
 
-if [[ "$PAT" =~ ^[0-9]+$ ]]; then PID="$PAT"; else PID=$(pgrep -f "$PAT" | head -1); fi
+if [[ "$PAT" =~ ^[0-9]+$ ]]; then
+  PID="$PAT"
+else
+  # Prefer the real binary over shell/timer wrappers (bash run.sh / /usr/bin/time
+  # also match a pattern like 'sa-perf mirror').
+  PID=""
+  for p in $(pgrep -f "$PAT"); do
+    case "$(ps -o comm= -p "$p" 2>/dev/null | xargs)" in
+      bash|sh|zsh|dash|time|nohup|pgrep) continue ;;
+    esac
+    PID="$p"; break
+  done
+  [ -z "$PID" ] && PID=$(pgrep -f "$PAT" | head -1)
+fi
 [ -z "${PID:-}" ] && { echo "no process matching: $PAT"; exit 1; }
 [ -d "/proc/$PID" ] || { echo "pid $PID not alive"; exit 1; }
 
@@ -42,13 +55,13 @@ pu2=$(awk '{print $14+$15}' "/proc/$PID/stat" 2>/dev/null)
 
 awk -v dt=$((t2-t1)) -v di=$((i2-i1)) -v n="$NCPU" \
   'BEGIN{busy=100*(dt-di)/dt; printf "sys CPU: %.1f%% busy / %.1f%% idle  (~%.1f of %d cores)\n", busy, 100-busy, busy/100*n, n}'
-awk -v d=$((pu2-pu1)) -v clk="$CLK" -v int="$INT" \
-  'BEGIN{printf "proc CPU: %.0f%%  (%.2f cores-equiv)\n", 100*d/clk/int, d/clk/int}'
+awk -v d=$((pu2-pu1)) -v clk="$CLK" -v win="$INT" \
+  'BEGIN{printf "proc CPU: %.0f%%  (%.2f cores-equiv)\n", 100*d/clk/win, d/clk/win}'
 echo "loadavg: $(cut -d' ' -f1-3 /proc/loadavg)  (CPU-bound on ${NCPU} cores => load ~${NCPU})"
 echo "proc RSS: $(awk '/VmRSS/{printf "%.0f MB (current, not peak)", $2/1024}' "/proc/$PID/status" 2>/dev/null)"
 if [ -n "$DIR" ]; then
   s2=$(du -sb "$DIR" 2>/dev/null | cut -f1)
-  awk -v d=$((s2-s1)) -v int="$INT" -v dir="$DIR" \
-    'BEGIN{printf "I/O    : %.1f MB/s into %s\n", d/1e6/int, dir}'
+  awk -v d=$((s2-s1)) -v win="$INT" -v dir="$DIR" \
+    'BEGIN{printf "I/O    : %.1f MB/s into %s\n", d/1e6/win, dir}'
 fi
 echo "verdict: low sys-CPU% + steady I/O => I/O/network-bound; sys-CPU% ~= 100%*cores => CPU-bound."
