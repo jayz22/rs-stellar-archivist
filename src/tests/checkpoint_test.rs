@@ -96,6 +96,22 @@ fn checkpointer_load_reads_prior_failures() {
     assert!(loaded.checkpoints.contains(&127));
 }
 
+/// Manual SIGINT integration test.  Compile and run this test by hand to verify
+/// that `spawn_signal_handler` writes an `interrupted` report on SIGINT.
+///
+/// Procedure:
+/// 1. `cargo build`
+/// 2. `target/debug/stellar-archivist scan file://<a large local archive> \
+///      --report /tmp/sig.json --checkpoint-interval 1 &`
+/// 3. Wait until `/tmp/sig.json` appears (first periodic flush), then:
+///    `kill -INT <pid>`
+/// 4. Assert that `/tmp/sig.json` parses with `run_status == "interrupted"`.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "subprocess + signal; run manually: cargo test -- --ignored sigint_writes_interrupted_report"]
+async fn sigint_writes_interrupted_report() {
+    // See doc-comment above for the manual procedure.
+}
+
 /// Integration test: scan the local testnet-archive-small fixture with
 /// checkpoint-interval 1 and a report path, then verify the written report
 /// has `run_status == Complete` (finalize overwrites the last periodic flush)

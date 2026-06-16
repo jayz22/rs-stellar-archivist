@@ -61,7 +61,8 @@ impl ScanCmd {
                 std::time::Duration::from_secs(30),
                 pipeline.stats_arc(),
             ));
-            pipeline.set_checkpointer(cp);
+            pipeline.set_checkpointer(cp.clone());
+            crate::checkpoint::spawn_signal_handler(cp);
         }
 
         pipeline.run().await.map_err(utils::map_pipeline_error)?;

@@ -108,7 +108,7 @@ struct Cli {
     #[arg(long, global = true)]
     report: Option<std::path::PathBuf>,
 
-    /// Flush a periodic report snapshot every N completed checkpoints (0 = off)
+    /// Write a report snapshot every N completed checkpoints (0 = count-based flushing off; the 30s time-backstop and signal flush still apply)
     #[arg(long, global = true, default_value_t = 200)]
     checkpoint_interval: usize,
 

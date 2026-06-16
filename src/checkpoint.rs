@@ -114,6 +114,51 @@ impl Checkpointer {
     }
 }
 
+/// Install a SIGINT/SIGTERM handler that does one final flush then hard-exits.
+/// First signal: flush(Interrupted) then `process::exit(130)`. A second signal
+/// during the flush exits immediately (never hang).
+pub fn spawn_signal_handler(cp: std::sync::Arc<Checkpointer>) {
+    tokio::spawn(async move {
+        // Wait for the first SIGINT or SIGTERM.
+        #[cfg(unix)]
+        {
+            let mut sigterm = match tokio::signal::unix::signal(
+                tokio::signal::unix::SignalKind::terminate(),
+            ) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!("could not install SIGTERM handler: {e}");
+                    return;
+                }
+            };
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                _ = sigterm.recv() => {}
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            if tokio::signal::ctrl_c().await.is_err() {
+                return;
+            }
+        }
+
+        tracing::warn!("signal received — flushing report and exiting");
+        // Race a second Ctrl-C: if it arrives, exit immediately.
+        tokio::select! {
+            r = cp.flush_now(crate::report::RunStatus::Interrupted) => {
+                if let Err(e) = r {
+                    tracing::error!("final checkpoint flush failed: {e}");
+                }
+            }
+            _ = tokio::signal::ctrl_c() => {
+                tracing::warn!("second signal — exiting without finishing flush");
+            }
+        }
+        std::process::exit(130);
+    });
+}
+
 /// Build a `Checkpointer` whose periodic render is a single-section `ArchiveReport`
 /// projected from `stats`. Used by scan/mirror/repair for periodic and on-signal
 /// snapshots. `backstop` is typically 30s; pass `Duration::from_secs(30)` at the
