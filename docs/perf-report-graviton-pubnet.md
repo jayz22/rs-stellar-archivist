@@ -5,7 +5,7 @@
 > the **Ubuntu/aarch64 (AWS Graviton2)** host using a **recent pubnet** fixture.
 > A separate earlier report (`docs/perf-report.md`) covers the macOS/testnet run.
 
-Last updated: 2026-06-15 (sweep in progress).
+Last updated: 2026-06-16 (Stage 2.1 complete; Stage 2.2 mirror starting).
 
 ---
 
@@ -51,7 +51,7 @@ failure set. See `scripts/perf/check_stage1.py`.
 
 ---
 
-## Stage 2.1 — Concurrency scaling (§6.1) — ⏳ IN PROGRESS
+## Stage 2.1 — Concurrency scaling (§6.1) — ✅ COMPLETE
 
 **Fixture:** a **recent** 2,000-checkpoint pubnet window, mirrored locally and
 used read-only as `file://`.
@@ -72,38 +72,78 @@ used read-only as `file://`.
 advertises the tip). Repair is excluded from the scaling sweep by design (see
 plan §6.1). Values reported as **median (min–max)** across reps.
 
-### Wall time (ms) vs `-c` — ⏳ pending sweep completion
+**84/84 runs completed, all exit 0.** Values are **median (min–max)** of 3 reps.
+
+### Wall time (s) vs `-c`
 
 | mode | c=1 | c=2 | c=4 | c=8 | c=16 | c=32 | c=64 |
 |---|---|---|---|---|---|---|---|
-| scan           | _…_ | | | | | | |
-| scan-verify    | _…_ | | | | | | |
-| mirror         | _…_ | | | | | | |
-| mirror-verify  | _…_ | | | | | | |
+| scan          | 0.8 | 0.6 | 0.7 | 0.7 | 0.7 | 0.7 | 0.7 |
+| scan-verify   | **836.2** | 530.3 | **476.5** | 478.2 | 483.0 | 487.9 | 496.4 |
+| mirror        | 30.4 | 25.2 | **23.2** | 23.2 | 24.4 | 23.7 | 23.4 |
+| mirror-verify | **853.6** | 550.0 | **506.0** | 509.4 | 511.5 | 518.9 | 527.9 |
 
-### Peak RSS (MB) vs `-c` — ⏳ pending
+### Peak RSS (MB) vs `-c`
 
 | mode | c=1 | c=2 | c=4 | c=8 | c=16 | c=32 | c=64 |
 |---|---|---|---|---|---|---|---|
-| scan           | | | | | | | |
-| scan-verify    | | | | | | | |
-| mirror         | | | | | | | |
-| mirror-verify  | | | | | | | |
+| scan          | 43 | 44 | 44 | 43 | 46 | 47 | 52 |
+| scan-verify   | 1114 | 1313 | 1553 | 1660 | 1986 | 2032 | **2108** |
+| mirror        | 227 | 347 | 448 | 498 | 627 | 857 | **923** |
+| mirror-verify | 1097 | 1364 | 1367 | 1610 | 1708 | 1716 | **1844** |
 
-### Throughput & phase breakdown — ⏳ pending
+Plots: `perf-results/plots/time_vs_concurrency.png`, `rss_vs_concurrency.png`,
+`phase_breakdown.png`.
 
-(Plots: `perf-results/plots/time_vs_concurrency.png`,
-`rss_vs_concurrency.png`, `phase_breakdown.png`.)
+### Knee / plateau (best `-c` by min-median wall)
 
-### Early single-threaded (`-c=1`) reference points
+| mode | best `-c` | wall @ best | wall @ c=1 | speedup c1→best |
+|---|---|---|---|---|
+| scan          | 2 | 0.6 s   | 0.8 s   | 1.24× |
+| scan-verify   | 4 | 476.5 s | 836.2 s | **1.76×** |
+| mirror        | 4 | 23.2 s  | 30.4 s  | 1.31× |
+| mirror-verify | 4 | 506.0 s | 853.6 s | **1.69×** |
 
-From validation/early runs on this fixture (warm cache):
-- `scan` (existence only): ~0.8 s, ~44 MB RSS — `stat` of 26,464 files; no decompress/hash.
-- `scan --verify`: ~14 min, ~1.1 GB RSS, ~219 MB/s over ~183 GB decompressed.
+### Phase self-time % at the plateau (`-c=4`)
 
-*(These will be superseded by the final median table above.)*
+| mode | bucket_stream | xdr_decompress | xdr_parse_tx | xdr_parse_result | (gzip+hash total) |
+|---|---|---|---|---|---|
+| scan-verify   | 70.3 | 21.3 | 6.6 | 1.6 | **91.6%** |
+| mirror-verify | 82.6 | 11.1 | 4.9 | 1.2 | **93.7%** |
 
-### Findings — ⏳ pending
+(`scan` and `mirror` without `--verify` spend ~0% in these phases — existence
+`scan` is `stat`-bound; plain `mirror` is ~100% the `copy` phase. Phase times are
+self-time summed across concurrent tasks and **overlap wall-clock** — read as
+"where the work is," per §2.4.)
+
+### Findings
+
+1. **Concurrency plateaus at `-c=4`, then mildly *regresses*.** All modes bottom
+   out around `-c=4` and get slightly *worse* toward `-c=64` (scan-verify
+   476→496 s; mirror-verify 506→528 s). So past 4 in-flight checkpoints, added
+   concurrency only adds overhead/contention on this workload — it does **not**
+   use the 32 cores. Best total speedup is just **1.76×** (scan-verify, c1→c4).
+2. **Verify is the only thing that scales at all; existence-scan and mirror are
+   IO/stat-bound** and basically flat (1.2–1.3×).
+3. **Verify cost is overwhelmingly gzip-decompress + SHA-256.** At the plateau,
+   `bucket_stream` + `xdr_decompress` = **~92%** (scan-verify) / **~94%**
+   (mirror-verify); XDR decode/parse and the cross-file/chain checks are a few
+   percent. Buckets dominate — pubnet's current bucket state is the bulk of the
+   bytes. Verify throughput peaks ≈ **384 MB/s** over ~183 GB decompressed.
+4. **Peak RSS grows steeply with `-c`** — the concurrency/memory trade-off:
+   scan-verify **1.1 GB → 2.1 GB**, mirror **0.23 GB → 0.92 GB**, mirror-verify
+   **1.1 GB → 1.8 GB** from c=1→64. So raising `-c` past the c=4 knee costs
+   memory **and** wall time here — strictly worse on local data.
+5. **Practical takeaway:** for local/warm work, `-c≈4` is optimal on this
+   32-core box; the default `-c=32` trades ~2× RSS for ~no speed (slightly
+   slower). `-c`'s real value is latency-hiding for **remote** archives — which
+   §6.2 exercises.
+
+> **Note vs the earlier macOS/testnet run** (`docs/perf-report.md`): that run
+> plateaued even earlier (~c=2) on a tiny fixture; here, with a realistic 55 GB
+> pubnet fixture on 32 cores, the knee is c=4 and the post-knee regression is
+> clearer. Both agree the engine saturates with a handful of in-flight
+> checkpoints and does not scale across many cores on local data.
 
 ---
 
