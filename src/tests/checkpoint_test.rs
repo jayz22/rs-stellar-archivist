@@ -63,3 +63,32 @@ async fn maybe_flush_triggers_on_time_backstop() {
     assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
     assert!(path.exists());
 }
+
+#[test]
+fn failure_tracker_union_preserves_and_merges() {
+    use crate::utils::{FailureTracker, FileFlags};
+    let mut a = FailureTracker::default();
+    a.record_checkpoint(127);
+    a.record_file(63, FileFlags::LEDGER);
+    let mut b = FailureTracker::default();
+    b.record_checkpoint(191);                 // new
+    b.record_file(63, FileFlags::RESULTS);    // merges into cp 63
+    a.union_from(&b);
+    assert!(a.checkpoints.contains(&127) && a.checkpoints.contains(&191)); // preserved + merged
+    assert!(a.files.get(&63).unwrap().has(FileFlags::LEDGER));
+    assert!(a.files.get(&63).unwrap().has(FileFlags::RESULTS));
+}
+
+#[test]
+fn checkpointer_load_reads_prior_failures() {
+    use crate::report::{ArchiveReport, write_to_path_atomic};
+    use crate::checkpoint::Checkpointer;
+    use crate::utils::FailureTracker;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("r.json");
+    let mut t = FailureTracker::default();
+    t.record_checkpoint(127);
+    write_to_path_atomic(&path, &ArchiveReport::from_failures_and_summary(&t, Default::default())).unwrap();
+    let loaded = Checkpointer::load(&path).unwrap();
+    assert!(loaded.checkpoints.contains(&127));
+}

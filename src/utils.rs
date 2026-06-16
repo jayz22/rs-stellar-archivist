@@ -223,6 +223,33 @@ impl FailureTracker {
         self.files.values().map(FileFlags::count).sum::<u32>()
     }
 
+    /// Union another tracker's failures into this one (preserve + merge; never
+    /// clears). Used by --resume to seed prior findings.
+    pub fn union_from(&mut self, other: &FailureTracker) {
+        if other.well_known.is_some() {
+            self.well_known = other.well_known;
+        }
+        for (&cp, flags) in &other.files {
+            for bit in [
+                FileFlags::HISTORY,
+                FileFlags::LEDGER,
+                FileFlags::TRANSACTIONS,
+                FileFlags::RESULTS,
+                FileFlags::SCP,
+            ] {
+                if flags.has(bit) {
+                    self.record_file(cp, bit);
+                }
+            }
+        }
+        for h in &other.buckets {
+            self.buckets.insert(h.clone());
+        }
+        for &cp in &other.checkpoints {
+            self.checkpoints.insert(cp);
+        }
+    }
+
     /// Record a verification failure, dispatching on its kind:
     /// - `Ledger(seq)` and `Checkpoint(cp)` mark a single checkpoint as
     ///   problematic.

@@ -56,6 +56,13 @@ impl Checkpointer {
         self.total.store(total, Ordering::Relaxed);
     }
 
+    /// Load prior findings from an existing single-section report (for --resume).
+    /// Hard error on a missing/unparseable/unsupported report — never guesses.
+    pub fn load(path: &std::path::Path) -> Result<crate::utils::FailureTracker, ReportError> {
+        let report = crate::report::read_from_path(path)?;
+        report.into_failures()
+    }
+
     /// Periodic driver: flush if the interval was crossed or the time backstop
     /// elapsed. Cheap and safe to call from every checkpoint completion.
     /// The flush decision and `last_completed` update happen under a single
