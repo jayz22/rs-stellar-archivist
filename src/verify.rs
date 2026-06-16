@@ -7,14 +7,22 @@ use crate::history_format::bucket_hash_from_path;
 use crate::storage::{from_opendal_error, Error as StorageError, StorageRef};
 use async_compression::tokio::bufread::GzipDecoder;
 use bytes::Bytes;
+use flate2::read::GzDecoder;
 use futures_util::StreamExt;
 use opendal::{Reader, Writer};
 use sha2::{Digest, Sha256};
+use std::io::Read as _;
 use tokio::io::{AsyncReadExt, BufReader};
+use tokio_util::compat::FuturesAsyncReadCompatExt;
+use tokio_util::io::SyncIoBridge;
 use tracing::debug;
 
 const HASH_BUFFER_SIZE: usize = 64 * 1024;
 const CHANNEL_CAPACITY: usize = 64;
+/// `BufReader` capacity feeding the `SyncIoBridge` in the synchronous scan
+/// path. Sets how much compressed data is pulled per blocking `block_on`, so a
+/// larger value amortizes the async-bridge hand-off over more bytes.
+const SYNC_READ_BUF: usize = 256 * 1024;
 
 /// Decompress and hash the given reader's content and verify it against the expected hash.
 /// If `writer` is provided, compressed bytes are written to it while verifying.
@@ -131,9 +139,62 @@ async fn verify_bucket_maybe_write(
 }
 
 /// Verify a bucket file's hash (scan operation).
+///
+/// Uses a **synchronous** decompress + SHA-256 on a blocking thread
+/// (`spawn_blocking`) rather than the async per-chunk + mpsc-channel path used
+/// by the mirror-write variant. The compressed stream is still read
+/// incrementally from `reader` (via `SyncIoBridge`, no whole-file buffering),
+/// but the gzip inflate + hash run in a tight synchronous loop on a real
+/// thread. This lets the CPU-bound work run flat-out and lets many buckets
+/// decode in parallel across cores — the async path left the engine
+/// latency-bound at well under one core of utilization.
 pub async fn verify_bucket_stream(path: &str, reader: Reader) -> Result<(), StorageError> {
-    debug!("Verifying bucket hash for {}", path);
-    verify_bucket_maybe_write(path, reader, None).await
+    debug!("Verifying bucket hash for {} (sync)", path);
+    let _g = crate::phase!(crate::metrics::Phase::BucketStream);
+
+    let expected = bucket_hash_from_path(path)
+        .ok_or_else(|| StorageError::fatal(format!("Invalid bucket path: {}", path)))?;
+
+    // opendal Reader -> futures AsyncRead -> tokio AsyncRead. SyncIoBridge::new
+    // must be constructed in async/runtime context (it captures the current
+    // Handle); its blocking reads then run on the spawn_blocking thread.
+    let async_read = reader
+        .into_futures_async_read(..)
+        .await
+        .map_err(|e| from_opendal_error(e, &format!("Failed to read {}", path)))?
+        .compat();
+    let bridge = SyncIoBridge::new(async_read);
+    let path_owned = path.to_string();
+
+    let (actual, decompressed_bytes) = tokio::task::spawn_blocking(move || {
+        let mut decoder = GzDecoder::new(std::io::BufReader::with_capacity(SYNC_READ_BUF, bridge));
+        let mut hasher = Sha256::new();
+        let mut buf = vec![0u8; HASH_BUFFER_SIZE];
+        let mut decompressed_bytes: u64 = 0;
+        loop {
+            let n = decoder.read(&mut buf)?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+            decompressed_bytes += n as u64;
+        }
+        Ok::<_, std::io::Error>((hex::encode(hasher.finalize()), decompressed_bytes))
+    })
+    .await
+    .map_err(|e| StorageError::fatal(format!("Hash task panicked for {}: {}", path_owned, e)))?
+    .map_err(|e| StorageError::retry(format!("Failed to decompress {}: {}", path_owned, e)))?;
+
+    if actual != expected {
+        return Err(StorageError::fatal(format!(
+            "Hash mismatch for {}: expected {}, got {}",
+            path, expected, actual
+        )));
+    }
+
+    crate::metrics::add_bytes(crate::metrics::Phase::BucketStream, decompressed_bytes);
+    crate::metrics::record_file(decompressed_bytes);
+    Ok(())
 }
 
 /// Verify and write a bucket file (mirror operation).
