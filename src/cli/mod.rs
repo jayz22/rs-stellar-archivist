@@ -161,6 +161,7 @@ pub(crate) fn resume_prior(args: &GlobalArgs) -> Result<Option<crate::utils::Fai
             ))
         })?;
         tracing::info!("--resume: seeding prior findings from {}", path.display());
+        crate::metrics::rename_prior_csvs();
         return Ok(Some(prior));
     }
     // Not resuming: warn if we'd clobber an interrupted report.

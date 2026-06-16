@@ -24,6 +24,7 @@ pub struct Checkpointer {
     total: AtomicU64,   // total checkpoints (for Progress); set via set_total
     render: RenderFn,
     inner: Mutex<Inner>, // serializes writes + holds last-flush instant + last_completed
+    started: std::time::Instant,
 }
 
 struct Inner {
@@ -49,6 +50,7 @@ impl Checkpointer {
                 last_flush_at: Instant::now(),
                 last_completed: 0,
             }),
+            started: Instant::now(),
         }
     }
 
@@ -108,6 +110,7 @@ impl Checkpointer {
             );
             return Err(e);
         }
+        crate::metrics::snapshot(self.started.elapsed());
         inner.last_flush_at = Instant::now();
         inner.last_completed = completed;
         Ok(())

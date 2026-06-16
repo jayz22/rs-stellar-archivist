@@ -221,6 +221,17 @@ async fn repair_resume_with_plan_errors() {
     );
 }
 
+#[cfg(feature = "perf-metrics")]
+#[test]
+fn metrics_snapshot_writes_csvs() {
+    let dir = tempfile::tempdir().unwrap();
+    std::env::set_var("SA_PERF_OUT", dir.path());
+    crate::metrics::snapshot(std::time::Duration::from_secs(1));
+    assert!(dir.path().join("phases.csv").exists());
+    assert!(dir.path().join("headline.csv").exists());
+    std::env::remove_var("SA_PERF_OUT");
+}
+
 /// Manual SIGINT integration test.  Compile and run this test by hand to verify
 /// that `spawn_signal_handler` writes an `interrupted` report on SIGINT.
 ///
