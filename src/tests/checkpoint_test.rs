@@ -3,7 +3,7 @@ use crate::report::{Progress, RunStatus};
 use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
 
 use super::utils::{file_url_from_path, testnet_small_archive_path};
-use crate::test_helpers::ScanConfig;
+use crate::test_helpers::{run_mirror, MirrorConfig, ScanConfig};
 
 fn counting_render(calls: Arc<AtomicU64>) -> RenderFn {
     Arc::new(move |status: RunStatus, progress: Progress| {
@@ -230,6 +230,102 @@ fn metrics_snapshot_writes_csvs() {
     assert!(dir.path().join("phases.csv").exists());
     assert!(dir.path().join("headline.csv").exists());
     std::env::remove_var("SA_PERF_OUT");
+}
+
+/// Integration test: repair with --report writes a final MultiSectionReport with
+/// run_status: Complete and the expected sections (main_pass / file_retry /
+/// checkpoint_retry), and the checkpointer attachment does not break the run.
+///
+/// We use RepairCmd::run(GlobalArgs) (the same path the CLI takes) so the
+/// checkpointer + signal handler wiring in src/cli/repair.rs is exercised.
+/// We repair a healthy archive (src == dst) so the test is fast; the key
+/// assertion is that repair's finalize writes a valid MultiSectionReport with the
+/// new run_status field set to Complete, not that any files were actually repaired.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn repair_writes_multisection_report_with_run_status() {
+    use crate::cli::repair::RepairCmd;
+    use crate::cli::GlobalArgs;
+    use crate::report::{MultiSectionReport, RunStatus};
+
+    // Mirror testnet-small to a temp dir to get a healthy dst archive.
+    let src_url = file_url_from_path(&testnet_small_archive_path());
+    let dst_dir = tempfile::tempdir().unwrap();
+    let dst_url = file_url_from_path(dst_dir.path());
+    run_mirror(MirrorConfig::new(&src_url, &dst_url))
+        .await
+        .expect("mirror setup should succeed");
+
+    let dir = tempfile::tempdir().unwrap();
+    let report_path = dir.path().join("repair-report.json");
+
+    let cmd = RepairCmd {
+        src: src_url,
+        dst: dst_url,
+        low: None,
+        high: None,
+        plan: None,
+        dry_run: false,
+    };
+
+    let global_args = GlobalArgs {
+        concurrency: 4,
+        skip_optional: false,
+        storage_config: crate::test_helpers::test_storage_config(),
+        verify: false,
+        report_path: Some(report_path.clone()),
+        // interval=1 so every checkpoint triggers a periodic flush — exercises
+        // the checkpointer path even on a short-running repair.
+        checkpoint_interval: 1,
+        resume: false,
+    };
+
+    // Run repair via the CLI path (includes checkpointer + signal-handler wiring).
+    cmd.run(global_args)
+        .await
+        .expect("repair should succeed on a healthy archive");
+
+    // The report must exist.
+    assert!(report_path.exists(), "repair should have written the report");
+
+    // The final report is a MultiSectionReport (not a flat ArchiveReport).
+    let content = std::fs::read_to_string(&report_path)
+        .expect("report should be readable");
+    let report: MultiSectionReport = serde_json::from_str(&content)
+        .expect("repair final report must parse as MultiSectionReport");
+
+    // Finalize must stamp the report as Complete.
+    assert_eq!(
+        report.run_status,
+        RunStatus::Complete,
+        "repair finalize must set run_status to Complete; got: {:?}",
+        report.run_status,
+    );
+
+    // All three expected sections must be present (even if empty on a healthy archive).
+    for section_name in &["main_pass", "file_retry", "checkpoint_retry"] {
+        assert!(
+            report.sections.contains_key(*section_name),
+            "MultiSectionReport must contain section '{section_name}'; \
+             found keys: {:?}",
+            report.sections.keys().collect::<Vec<_>>(),
+        );
+    }
+
+    // Healthy archive: no failures in any section.
+    for (name, section) in &report.sections {
+        assert!(
+            section.files.is_empty(),
+            "section '{name}' should have no file failures on a healthy archive"
+        );
+        assert!(
+            section.buckets.is_empty(),
+            "section '{name}' should have no bucket failures on a healthy archive"
+        );
+        assert!(
+            section.checkpoints.is_empty(),
+            "section '{name}' should have no checkpoint failures on a healthy archive"
+        );
+    }
 }
 
 /// Manual SIGINT integration test.  Compile and run this test by hand to verify
