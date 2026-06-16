@@ -282,3 +282,23 @@ pub fn write_to_path<T: Serialize>(path: &Path, report: &T) -> Result<(), Report
     std::fs::write(path, json)?;
     Ok(())
 }
+
+/// Like [`write_to_path`] but atomic: serialize to `<path>.tmp`, fsync, then
+/// rename over `<path>`. A crash mid-write never leaves a partial report.
+pub fn write_to_path_atomic<T: Serialize>(path: &Path, report: &T) -> Result<(), ReportError> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    let json = serde_json::to_string_pretty(report)?;
+    let tmp = path.with_extension("json.tmp");
+    {
+        use std::io::Write;
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(json.as_bytes())?;
+        f.sync_all()?;
+    }
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}

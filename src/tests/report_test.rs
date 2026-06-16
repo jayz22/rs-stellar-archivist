@@ -240,6 +240,17 @@ fn report_run_status_and_progress_roundtrip_and_backcompat() {
     assert_eq!(parsed.progress.total_checkpoints, 0);   // default
 }
 
+#[test]
+fn write_to_path_atomic_writes_and_overwrites_without_leaving_tmp() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("report.json");
+    let r = crate::report::ArchiveReport::from_failures_and_summary(&Default::default(), Default::default());
+    crate::report::write_to_path_atomic(&path, &r).unwrap();
+    crate::report::write_to_path_atomic(&path, &r).unwrap(); // overwrite is fine
+    let _ = crate::report::read_from_path(&path).unwrap();    // valid JSON
+    assert!(!path.with_extension("json.tmp").exists()); // no stray tmp
+}
+
 /// A scan/mirror-shaped report (well_known + files + buckets + checkpoints)
 /// is a valid repair plan: into_failures accepts it and reconstructs the
 /// tracker. Guards cross-operation compatibility.
