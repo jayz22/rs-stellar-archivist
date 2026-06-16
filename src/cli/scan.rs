@@ -60,9 +60,9 @@ impl ScanCmd {
             pipeline.stats().seed_failures(prior).await;
         }
 
-        if let Some(rp) = args.report_path.clone() {
+        if let Some(rp) = args.report_path.as_ref() {
             let cp = std::sync::Arc::new(crate::checkpoint::single_section_checkpointer(
-                rp,
+                rp.clone(),
                 args.checkpoint_interval,
                 std::time::Duration::from_secs(30),
                 pipeline.stats_arc(),

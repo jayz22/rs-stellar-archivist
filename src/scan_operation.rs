@@ -137,7 +137,7 @@ impl Operation for ScanOperation {
                 progress: stats.progress(),
                 section: stats.report_section().await,
             };
-            crate::report::write_to_path(path, &report)
+            crate::report::write_to_path_atomic(path, &report)
                 .map_err(|e| crate::pipeline::Error::ScanOperation(Error::Report(e)))?;
         }
 

@@ -156,7 +156,9 @@ pub(crate) fn resume_prior(args: &GlobalArgs) -> Result<Option<crate::utils::Fai
     if args.resume {
         let prior = crate::checkpoint::Checkpointer::load(path).map_err(|e| {
             Error::Other(format!(
-                "--resume: cannot load prior report {}: {e}",
+                "--resume: could not load prior findings from {} ({e}). \
+                 Note: only single-section reports from scan/mirror or an interrupted run can be resumed; \
+                 a completed repair report (multi-section) cannot.",
                 path.display()
             ))
         })?;

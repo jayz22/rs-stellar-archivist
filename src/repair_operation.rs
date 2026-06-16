@@ -195,7 +195,7 @@ impl RepairOperation {
                 .into_iter()
                 .collect(),
             };
-            crate::report::write_to_path(path, &out)?;
+            crate::report::write_to_path_atomic(path, &out)?;
         }
 
         if file_retry_stats.has_failures().await || checkpoint_retry_stats.has_failures().await {
@@ -728,7 +728,7 @@ impl Operation for RepairOperation {
                     progress: stats.progress(),
                     section: stats.report_section().await,
                 };
-                crate::report::write_to_path(path, &report)
+                crate::report::write_to_path_atomic(path, &report)
                     .map_err(|e| pipeline::Error::RepairOperation(Error::Report(e)))?;
             }
             return Ok(());
@@ -785,7 +785,7 @@ impl Operation for RepairOperation {
                 .into_iter()
                 .collect(),
             };
-            crate::report::write_to_path(path, &report)
+            crate::report::write_to_path_atomic(path, &report)
                 .map_err(|e| pipeline::Error::RepairOperation(Error::Report(e)))?;
         }
 

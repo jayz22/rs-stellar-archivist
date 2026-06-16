@@ -378,7 +378,7 @@ impl Operation for MirrorOperation {
                 progress: stats.progress(),
                 section: stats.report_section().await,
             };
-            crate::report::write_to_path(path, &report)
+            crate::report::write_to_path_atomic(path, &report)
                 .map_err(|e| crate::pipeline::Error::MirrorOperation(Error::Report(e)))?;
         }
 
