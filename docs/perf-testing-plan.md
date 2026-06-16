@@ -258,19 +258,39 @@ For each (mode × `-c` × rep): record wall, peak RSS, throughput, exit code →
 
 **⚠️ Large:** hundreds of GB of disk, many hours. Ensure disk headroom; run in `tmux`/`nohup`. Mirror is resumable (re-running continues); the harness logs progress and can resume.
 
-Order (mirror first so scan/repair can optionally use the local copy too):
+> **Use `--skip-optional` on EVERY full-pubnet op (mirror, scan, scan-verify, repair).**
+> SCP is the only optional file type, and **pubnet did not archive SCP before
+> ledger 1,214,079** (checkpoint `0x0012867f`, closed 2015-12-07; protocol 1).
+> Below that ledger `scp-*.xdr.gz` returns HTTP 404. A run *without*
+> `--skip-optional` does **not** abort on the first 404 — it processes every
+> checkpoint and file concurrently, records each missing SCP as a failure, and
+> only returns a **non-zero exit at the end** (so a full mirror would "succeed"
+> at copying the 4 required types + buckets but still exit non-zero, and the
+> remote scans would log a 404 per early checkpoint). `--skip-optional` gates the
+> SCP fetch entirely (`pipeline.rs`: the scp future is only built when
+> `!skip_optional`), so SCP is never requested → no 404s → clean exit over the
+> full genesis→tip range. Cost: the mirror contains no SCP at all (even the
+> recent checkpoints ≥ 1,214,079 that do have it), and the `XdrParseScp` phase
+> isn't exercised at scale — both acceptable, since SCP correctness is covered
+> in Stage 1. (If at-scale SCP ever matters, mirror ledgers ≥ 1,214,079 in a
+> second pass *without* `--skip-optional`.)
+
+Order (mirror first so scan/repair can optionally use the local copy too).
 All paths on the dedicated data volume (`/data`), never the root disk — see the disk note in §6.0.
 ```bash
 DST=file:///data/pubnet-mirror
-# 1) MIRROR (downloads everything)
-time-wrap ./bin/sa-clean mirror "$PUBNET" "$DST" -c 32 --report mirror.json
+# 1) MIRROR (downloads everything) — verify OFF: this measures download+write throughput
+time-wrap ./bin/sa-clean mirror "$PUBNET" "$DST" -c 32 --skip-optional --report mirror.json
 # 2) SCAN remote (existence) and SCAN remote --verify
-time-wrap ./bin/sa-clean scan "$PUBNET" -c 32 --report scan.json
-time-wrap ./bin/sa-clean scan "$PUBNET" -c 32 --verify --report scan-verify.json
-# 3) REPAIR: corrupt a copy of the local mirror, repair from remote
+time-wrap ./bin/sa-clean scan "$PUBNET" -c 32 --skip-optional --report scan.json
+time-wrap ./bin/sa-clean scan "$PUBNET" -c 32 --skip-optional --verify --report scan-verify.json
+# 3) REPAIR: corrupt a LOCAL copy of the mirror, repair re-fetching from REMOTE (network-bound)
 ./bin/corrupt-archive /data/pubnet-copy --kinds all --count <K> --manifest c.json
-time-wrap ./bin/sa-clean repair "$PUBNET" file:///data/pubnet-copy -c 32 --verify --report repair.json
-time-wrap ./bin/sa-clean repair "$PUBNET" file:///data/pubnet-copy -c 32 --dry-run --report plan.json
+time-wrap ./bin/sa-clean repair "$PUBNET" file:///data/pubnet-copy -c 32 --skip-optional --verify --report repair.json
+time-wrap ./bin/sa-clean repair "$PUBNET" file:///data/pubnet-copy -c 32 --skip-optional --dry-run --verify --report plan.json
+# 4) NETWORK-FREE engine numbers: re-run scan-verify + repair against the LOCAL mirror
+time-wrap ./bin/sa-clean scan "$DST" -c 32 --skip-optional --verify --report scan-verify-local.json
+time-wrap ./bin/sa-clean repair "$DST" file:///data/pubnet-copy -c 32 --skip-optional --verify --report repair-local.json
 ```
 Capture for each: wall, peak RSS, throughput (MB/s, files/s), the phase breakdown (one `sa-perf` run; for the very longest, `sa-perf` mirror may be skipped if overhead is a concern — note it), and the `ps` RSS time-series. **Remote runs are network-bound** — explicitly note measured bandwidth so CPU/IO bottlenecks aren't confused with network limits. Re-run the scan/repair against the **local** full mirror (`file://`) to get the network-free engine numbers for comparison.
 

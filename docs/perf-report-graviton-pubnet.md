@@ -114,6 +114,28 @@ scan / scan-verify, repair from remote, and a local-engine re-run for the
 network-free comparison. Network is ~203 MB/s (single-stream) — runs will be
 network-bound; bandwidth noted alongside results.
 
+**Goals:** (1) throughput & memory at *true* archive scale (TBs), not a warm
+55 GB fixture; (2) **how network-bound each op is** — same op run remote vs
+against the local mirror, the delta isolates network from engine; (3) repair
+perf at scale (excluded from the §6.1 sweep).
+
+**Network/local map:** local = the mirror output, the corrupted copy, and the
+repair *target*. Network-bound = the mirror *download* (step 1), the remote
+scans (step 2), and the repair *re-fetch source* (step 3, repairs a local copy
+by pulling good files from the remote). Step 4 repeats scan-verify + repair with
+a **local** source to strip the network out (the control).
+
+**Locked decision — `--skip-optional` on every full-pubnet op** (mirror, scan,
+scan-verify, repair). Pubnet did not archive SCP before **ledger 1,214,079**
+(checkpoint `0x0012867f`, closed **2015-12-07**, protocol 1) — below that,
+`scp-*.xdr.gz` is HTTP 404. Confirmed engine behavior: scan/mirror do **not**
+abort on a 404; they process all checkpoints concurrently, record each missing
+file, and return a non-zero exit only at the end. `--skip-optional` never
+requests SCP, so the full genesis→tip range runs clean. Trade-off: no SCP in the
+mirror and no at-scale `XdrParseScp` timing (SCP correctness is covered in
+Stage 1). Verify is **OFF for the step-1 mirror** (it measures download+write
+throughput; verify cost comes from the scan-verify steps).
+
 ---
 
 ## Measurement caveats (apply throughout)
