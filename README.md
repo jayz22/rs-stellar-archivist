@@ -230,6 +230,85 @@ Two further limitations:
    canonical; it validates internal integrity but does not independently
    re-verify its own writes after the run.
 
+### Pausing and resuming a run
+
+Long-running `scan`, `mirror`, and `repair` operations can be interrupted and
+resumed without losing findings.
+
+#### Periodic checkpointing
+
+When `--report <file>` is given, the tool writes the report to disk
+periodically during the run — every `--checkpoint-interval` completed
+checkpoints (default: **200**) and at most every **30 seconds** regardless of
+count. Both triggers are always active when `--report` is set; set
+`--checkpoint-interval 0` to disable the count-based trigger while keeping the
+30-second time-backstop and signal-flush.
+
+Report writes are **atomic**: the file is written to a temp path, fsynced, and
+then renamed into place, so a crash or kill mid-write never leaves a corrupt
+report.
+
+#### Interrupting a run (Ctrl-C / SIGTERM)
+
+Pressing Ctrl-C (or sending SIGTERM) causes the tool to:
+
+1. Write one final report snapshot with `"run_status": "interrupted"`.
+2. Hard-exit with **exit code 130**.
+
+A second Ctrl-C while the flush is in progress exits immediately without
+writing.
+
+A run that completes normally writes `"run_status": "complete"`. The report
+also includes a `"progress"` object:
+
+```jsonc
+{
+  "run_status": "interrupted",   // or "complete"
+  "progress": {
+    "processed_checkpoints": 4200,
+    "total_checkpoints": 50000
+  }
+  // ... rest of report fields ...
+}
+```
+
+#### Resuming with `--resume`
+
+Pass `--resume` together with `--report <file>` to load an earlier report's
+findings (broken files, checkpoints, buckets, and `well_known`) into the new
+run before it starts. The union is additive — prior findings are **preserved
+and merged**, never cleared. The run **re-scans from the beginning** of the
+requested range; it does not skip checkpoints that were already processed.
+
+Constraints:
+- `--resume` requires `--report` (silently ignored without it, with a warning).
+- `--resume` cannot be combined with `--plan` on `repair` — the plan already
+  encodes the work-list.
+- A missing or corrupt report file under `--resume` is a hard error.
+
+If you run without `--resume` and a `--report` path already holds an
+interrupted report, the tool emits a warning that you may want to pass
+`--resume` to keep its findings.
+
+#### Example
+
+```bash
+# Long scan; press Ctrl-C any time — findings are saved to scan.json
+stellar-archivist scan https://history.stellar.org/prd/core-live/core_live_001 \
+    --report scan.json
+
+# Continue later, keeping all earlier findings:
+stellar-archivist scan https://history.stellar.org/prd/core-live/core_live_001 \
+    --report scan.json --resume
+```
+
+The same `--report`/`--resume` pattern works for `mirror` and `repair`
+(without `--plan`).
+
+> **Note (non-default builds only):** When built with `--features perf-metrics`,
+> perf CSV files are also snapshotted at each checkpoint flush; `--resume`
+> renames any prior CSVs to `*.prev.csv` and starts fresh.
+
 ### Command-line options
 
 - `-c, --concurrency N`: Number of concurrent workers (default: 32)
@@ -238,9 +317,11 @@ Two further limitations:
 - `--high N`: Stop at checkpoint N
 - `--verify`: Verify content (XDR structure, hashes, chain continuity, bucket SHA-256), not just existence
 - `--report <file>`: Write a JSON status report (or, for `repair --dry-run`, a plan)
+- `--checkpoint-interval N`: Write a report snapshot every N completed checkpoints (default: 200; 0 = count-based flushing off, but the 30s time-backstop and signal flush still apply)
+- `--resume`: Load prior findings from the `--report` file and merge them into this run (requires `--report`; cannot be combined with `repair --plan`)
 - `--overwrite`: Overwrite existing files when mirroring
 - `--allow-mirror-gaps`: Allow creating gaps in destination archive
-- `--plan <file>` (repair only): Apply a JSON plan from a prior `--dry-run`, or any `scan`/`mirror` `--report`. Every listed item is re-fetched unconditionally; `--verify` works as in a regular repair (validates downloaded content). Mutually exclusive with `--low`/`--high`/`--dry-run`
+- `--plan <file>` (repair only): Apply a JSON plan from a prior `--dry-run`, or any `scan`/`mirror` `--report`. Every listed item is re-fetched unconditionally; `--verify` works as in a regular repair (validates downloaded content). Mutually exclusive with `--low`/`--high`/`--dry-run`/`--resume`
 - `--dry-run` (repair only): Report what would be repaired without writing
 
 ## Architecture
