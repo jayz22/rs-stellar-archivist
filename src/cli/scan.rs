@@ -32,6 +32,8 @@ impl ScanCmd {
             info!("Scanning up to checkpoint {}", high);
         }
 
+        let prior = crate::cli::resume_prior(&args)?;
+
         let src_store = storage::from_url_with_config(&self.archive, &args.storage_config)
             .map_err(|e| Error::Other(format!("Failed to create source backend: {e}")))?;
 
@@ -53,6 +55,10 @@ impl ScanCmd {
             None,
             args.report_path.clone(),
         );
+
+        if let Some(prior) = prior {
+            pipeline.stats().seed_failures(prior).await;
+        }
 
         if let Some(rp) = args.report_path.clone() {
             let cp = std::sync::Arc::new(crate::checkpoint::single_section_checkpointer(

@@ -60,6 +60,10 @@ impl RepairCmd {
             )));
         }
 
+        // Load prior findings before any field moves out of `args`.
+        // (For the plan path, `prior` is unused — that's fine.)
+        let prior = crate::cli::resume_prior(&args)?;
+
         let pipeline_config = PipelineConfig {
             concurrency: args.concurrency,
             skip_optional: args.skip_optional,
@@ -102,6 +106,7 @@ impl RepairCmd {
                 .run_manual(plan, args.report_path.as_deref())
                 .await?;
         } else {
+
             let mut pipeline = Pipeline::new(
                 operation,
                 pipeline_config,
@@ -109,6 +114,10 @@ impl RepairCmd {
                 Some(dst_store),
                 args.report_path.clone(),
             );
+
+            if let Some(prior) = prior {
+                pipeline.stats().seed_failures(prior).await;
+            }
 
             if let Some(rp) = args.report_path.clone() {
                 let cp = std::sync::Arc::new(crate::checkpoint::single_section_checkpointer(

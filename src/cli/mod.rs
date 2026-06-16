@@ -139,6 +139,41 @@ pub struct GlobalArgs {
     pub resume: bool,
 }
 
+/// Load prior findings when `--resume` is set; otherwise warn if we are about
+/// to overwrite an interrupted report. Returns the prior `FailureTracker` to
+/// seed into the pipeline, or `None` if not resuming.
+///
+/// Ordering contract: call this before `Pipeline::new` (or at least before
+/// `pipeline.run()`). The checkpointer only *writes* during the run, so as
+/// long as we read the prior report before `run()` we are safe.
+pub(crate) fn resume_prior(args: &GlobalArgs) -> Result<Option<crate::utils::FailureTracker>, Error> {
+    let Some(path) = args.report_path.as_ref() else {
+        return Ok(None);
+    };
+    if args.resume {
+        let prior = crate::checkpoint::Checkpointer::load(path).map_err(|e| {
+            Error::Other(format!(
+                "--resume: cannot load prior report {}: {e}",
+                path.display()
+            ))
+        })?;
+        tracing::info!("--resume: seeding prior findings from {}", path.display());
+        return Ok(Some(prior));
+    }
+    // Not resuming: warn if we'd clobber an interrupted report.
+    if path.exists() {
+        if let Ok(rep) = crate::report::read_from_path(path) {
+            if rep.run_status == crate::report::RunStatus::Interrupted {
+                tracing::warn!(
+                    "overwriting an interrupted report at {} — pass --resume to keep its findings",
+                    path.display()
+                );
+            }
+        }
+    }
+    Ok(None)
+}
+
 /// Run the CLI with the given arguments
 pub async fn run<I, T>(args: I) -> Result<(), Error>
 where

@@ -401,6 +401,12 @@ impl ArchiveStats {
         }
     }
 
+    /// Seed prior findings into this stats (for --resume). Unions into the
+    /// current failure tracker (preserve + merge; never clears).
+    pub async fn seed_failures(&self, prior: crate::utils::FailureTracker) {
+        self.failures.lock().await.union_from(&prior);
+    }
+
     /// True iff the tracker holds any failure of any kind.
     pub async fn has_failures(&self) -> bool {
         !self.failures.lock().await.is_empty()

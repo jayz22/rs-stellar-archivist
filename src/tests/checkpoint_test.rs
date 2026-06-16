@@ -96,6 +96,94 @@ fn checkpointer_load_reads_prior_failures() {
     assert!(loaded.checkpoints.contains(&127));
 }
 
+/// Integration test: --resume unions prior findings into the live run.
+///
+/// Writes a "prior interrupted report" that contains a broken checkpoint
+/// (0xBFFF = 49151 = 768*64-1) which is a valid checkpoint boundary and lies
+/// well outside the scan range (0x63f–0x6ff = 1599–1791). Then re-scans the
+/// same healthy bounded range with the prior findings seeded (mimicking
+/// --resume), and asserts the prior checkpoint is preserved in the final report.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn resume_unions_prior_findings() {
+    use crate::report::{write_to_path_atomic, read_from_path, ArchiveReport, RunStatus};
+    use crate::utils::FailureTracker;
+
+    let dir = tempfile::tempdir().unwrap();
+    let report_path = dir.path().join("r.json");
+
+    // Prior "broken" checkpoint: 0xBFFF = 49151 = 768*64 - 1, a valid boundary
+    // far above the scan range (0x63f–0x6ff = 1599–1791). The re-scan will not
+    // touch it, so it must survive union into the final report.
+    const PRIOR_CP: u32 = 0xBFFF; // 49151
+    let mut prior = FailureTracker::default();
+    prior.record_checkpoint(PRIOR_CP);
+    let mut pr = ArchiveReport::from_failures_and_summary(&prior, Default::default());
+    pr.run_status = RunStatus::Interrupted;
+    write_to_path_atomic(&report_path, &pr).unwrap();
+
+    // Build a pipeline that scans the healthy small fixture up to 0x6ff.
+    // This mirrors what the scan_report_has_progress_and_complete_status test does,
+    // but we also seed the prior failures first (the --resume step).
+    let archive_url = file_url_from_path(&testnet_small_archive_path());
+    let config = crate::test_helpers::ScanConfig::new(&archive_url)
+        .skip_optional()
+        .high(0x6ff);
+
+    let src_store = crate::storage::from_url_with_config(
+        &config.archive,
+        &config.storage_config,
+    )
+    .unwrap();
+    let pipeline_config = crate::pipeline::PipelineConfig {
+        concurrency: config.concurrency,
+        skip_optional: config.skip_optional,
+        skip_history_and_buckets: false,
+        verify: config.verify,
+        storage_config: config.storage_config.clone(),
+    };
+    let operation = crate::scan_operation::ScanOperation::new(
+        config.low,
+        config.high,
+        pipeline_config.clone(),
+    );
+    let mut pipeline = crate::pipeline::Pipeline::new(
+        operation,
+        pipeline_config,
+        src_store,
+        None,
+        Some(report_path.clone()),
+    );
+
+    // Seed prior findings BEFORE run() — this is the --resume logic.
+    let loaded = crate::checkpoint::Checkpointer::load(&report_path).unwrap();
+    pipeline.stats().seed_failures(loaded).await;
+
+    // Wire the checkpointer (interval=1 so every checkpoint triggers a flush).
+    let cp = std::sync::Arc::new(crate::checkpoint::single_section_checkpointer(
+        report_path.clone(),
+        /*interval*/ 1,
+        std::time::Duration::from_secs(3600),
+        pipeline.stats_arc(),
+    ));
+    pipeline.set_checkpointer(cp);
+
+    // The seeded failure makes has_failures() true, so finalize writes the
+    // report and then returns Err(ScanFailed). That's expected — don't unwrap.
+    let _ = pipeline
+        .run()
+        .await
+        .map_err(crate::utils::map_pipeline_error);
+
+    // The prior broken checkpoint must be preserved in the final report.
+    let out = read_from_path(&report_path).unwrap();
+    assert!(
+        out.section.checkpoints.contains(&PRIOR_CP),
+        "prior finding (cp 0x{PRIOR_CP:04x} = {PRIOR_CP}) must be preserved on --resume; \
+         got checkpoints: {:?}",
+        out.section.checkpoints,
+    );
+}
+
 /// Manual SIGINT integration test.  Compile and run this test by hand to verify
 /// that `spawn_signal_handler` writes an `interrupted` report on SIGINT.
 ///

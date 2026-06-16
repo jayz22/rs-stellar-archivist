@@ -39,6 +39,8 @@ impl MirrorCmd {
             self.src, self.dst, args.concurrency
         );
 
+        let prior = crate::cli::resume_prior(&args)?;
+
         let src_store = storage::from_url_with_config(&self.src, &args.storage_config)
             .map_err(|e| Error::Other(format!("Failed to create source backend: {e}")))?;
 
@@ -77,6 +79,10 @@ impl MirrorCmd {
             Some(dst_store),
             args.report_path.clone(),
         );
+
+        if let Some(prior) = prior {
+            pipeline.stats().seed_failures(prior).await;
+        }
 
         if let Some(rp) = args.report_path.clone() {
             let cp = std::sync::Arc::new(crate::checkpoint::single_section_checkpointer(
