@@ -180,6 +180,8 @@ impl RepairOperation {
         if let Some(path) = report_path {
             let out = crate::report::MultiSectionReport {
                 version: crate::report::REPORT_VERSION,
+                run_status: crate::report::RunStatus::Complete,
+                progress: crate::report::Progress::default(),
                 sections: [
                     (
                         "file_retry".to_string(),
@@ -719,6 +721,8 @@ impl Operation for RepairOperation {
             if let Some(path) = report_path {
                 let report = crate::report::ArchiveReport {
                     version: crate::report::REPORT_VERSION,
+                    run_status: crate::report::RunStatus::Complete,
+                    progress: crate::report::Progress::default(),
                     section: stats.report_section().await,
                 };
                 crate::report::write_to_path(path, &report)
@@ -762,6 +766,8 @@ impl Operation for RepairOperation {
         if let Some(path) = report_path {
             let report = crate::report::MultiSectionReport {
                 version: crate::report::REPORT_VERSION,
+                run_status: crate::report::RunStatus::Complete,
+                progress: crate::report::Progress::default(),
                 sections: [
                     ("main_pass".to_string(), stats.report_section().await),
                     (

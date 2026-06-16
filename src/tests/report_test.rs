@@ -209,6 +209,37 @@ fn test_well_known_serializes_as_number_or_null() {
     assert!(healthy.contains("\"well_known\":null"), "got: {healthy}");
 }
 
+#[test]
+fn report_run_status_and_progress_roundtrip_and_backcompat() {
+    use crate::report::{Progress, RunStatus};
+    use std::collections::BTreeMap;
+
+    // New fields round-trip.
+    let r = ArchiveReport {
+        version: REPORT_VERSION,
+        run_status: RunStatus::Interrupted,
+        progress: Progress { processed_checkpoints: 7, total_checkpoints: 10 },
+        section: crate::report::ReportSection {
+            well_known: None,
+            files: BTreeMap::new(),
+            buckets: vec![],
+            checkpoints: vec![],
+            summary: Summary::default(),
+        },
+    };
+    let json = serde_json::to_string(&r).unwrap();
+    let back: ArchiveReport = serde_json::from_str(&json).unwrap();
+    assert_eq!(back.run_status, RunStatus::Interrupted);
+    assert_eq!(back.progress.processed_checkpoints, 7);
+
+    // Old report WITHOUT the new fields still parses (defaults).
+    let old = r#"{"version":1,"well_known":null,"files":{},"buckets":[],"checkpoints":[],
+                  "summary":{"succeeded":1,"skipped":0,"failed":0,"retries":0}}"#;
+    let parsed: ArchiveReport = serde_json::from_str(old).unwrap();
+    assert_eq!(parsed.run_status, RunStatus::Complete); // default
+    assert_eq!(parsed.progress.total_checkpoints, 0);   // default
+}
+
 /// A scan/mirror-shaped report (well_known + files + buckets + checkpoints)
 /// is a valid repair plan: into_failures accepts it and reconstructs the
 /// tracker. Guards cross-operation compatibility.

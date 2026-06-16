@@ -79,11 +79,32 @@ pub struct ReportSection {
     pub summary: Summary,
 }
 
+/// Whether a report reflects a completed run or a paused/killed one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunStatus {
+    #[default]
+    Complete,
+    Interrupted,
+}
+
+/// How far a run got (counts only — checkpoints complete out of order under
+/// concurrency, and resume re-scans from the top, so no resume-point field).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Progress {
+    pub processed_checkpoints: u64,
+    pub total_checkpoints: u64,
+}
+
 /// A single-section report (scan/mirror status, or a repair plan). The body is
 /// `#[serde(flatten)]`ed so the JSON stays flat: `{version, well_known, …}`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArchiveReport {
     pub version: u32,
+    #[serde(default)]
+    pub run_status: RunStatus,
+    #[serde(default)]
+    pub progress: Progress,
     #[serde(flatten)]
     pub section: ReportSection,
 }
@@ -147,6 +168,8 @@ impl ArchiveReport {
     pub fn from_failures_and_summary(failures: &FailureTracker, summary: Summary) -> Self {
         Self {
             version: REPORT_VERSION,
+            run_status: RunStatus::Complete,
+            progress: Progress::default(),
             section: project(failures, summary),
         }
     }
@@ -221,6 +244,10 @@ fn summary_of(failures: &FailureTracker, succeeded: u64, skipped: u64, retries: 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MultiSectionReport {
     pub version: u32,
+    #[serde(default)]
+    pub run_status: RunStatus,
+    #[serde(default)]
+    pub progress: Progress,
     pub sections: IndexMap<String, ReportSection>,
 }
 
