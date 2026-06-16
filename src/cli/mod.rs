@@ -148,6 +148,9 @@ pub struct GlobalArgs {
 /// long as we read the prior report before `run()` we are safe.
 pub(crate) fn resume_prior(args: &GlobalArgs) -> Result<Option<crate::utils::FailureTracker>, Error> {
     let Some(path) = args.report_path.as_ref() else {
+        if args.resume {
+            tracing::warn!("--resume has no effect without --report");
+        }
         return Ok(None);
     };
     if args.resume {

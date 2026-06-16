@@ -184,6 +184,43 @@ async fn resume_unions_prior_findings() {
     );
 }
 
+/// Fix 1 guard: --resume cannot be combined with --plan.
+///
+/// Constructs RepairCmd + GlobalArgs directly (bypasses cli::run's global
+/// tracing init) and verifies the early guard fires before any I/O.
+#[tokio::test(flavor = "multi_thread")]
+async fn repair_resume_with_plan_errors() {
+    use crate::cli::repair::RepairCmd;
+    use crate::cli::GlobalArgs;
+
+    let cmd = RepairCmd {
+        src: "file:///tmp/src".to_string(),
+        dst: "file:///tmp/dst".to_string(),
+        low: None,
+        high: None,
+        plan: Some(std::path::PathBuf::from("/tmp/whatever.json")),
+        dry_run: false,
+    };
+
+    let global_args = GlobalArgs {
+        concurrency: 4,
+        skip_optional: false,
+        storage_config: crate::test_helpers::test_storage_config(),
+        verify: false,
+        report_path: Some(std::path::PathBuf::from("/tmp/r.json")),
+        checkpoint_interval: 200,
+        resume: true,
+    };
+
+    let result = cmd.run(global_args).await;
+    assert!(result.is_err(), "--resume --plan must be rejected");
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("--resume cannot be combined with --plan"),
+        "error must mention the mutual-exclusion, got: {msg}"
+    );
+}
+
 /// Manual SIGINT integration test.  Compile and run this test by hand to verify
 /// that `spawn_signal_handler` writes an `interrupted` report on SIGINT.
 ///

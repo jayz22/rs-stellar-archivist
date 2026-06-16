@@ -47,6 +47,12 @@ impl RepairCmd {
             ));
         }
 
+        if self.plan.is_some() && args.resume {
+            return Err(Error::Other(
+                "--resume cannot be combined with --plan (the plan already encodes the work-list)".to_string(),
+            ));
+        }
+
         let src_store = storage::from_url_with_config(&self.src, &args.storage_config)
             .map_err(|e| Error::Other(format!("Failed to create source backend: {e}")))?;
 
@@ -106,7 +112,6 @@ impl RepairCmd {
                 .run_manual(plan, args.report_path.as_deref())
                 .await?;
         } else {
-
             let mut pipeline = Pipeline::new(
                 operation,
                 pipeline_config,
