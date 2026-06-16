@@ -20,6 +20,14 @@ cli = ["dep:clap", "dep:tracing-subscriber"]
 perf-metrics = ["dep:libc"]
 corruption-tool = ["dep:walkdir", "dep:rand"]
 
+# EXPERIMENT ONLY (perf-verify-speedup branch): swap the gzip backend that both
+# our direct flate2 use AND async-compression's GzipDecoder share via feature
+# unification. flate2 1.1.9 backend priority: any_c_zlib > zlib-rs (sets
+# any_zlib, disables miniz_oxide) > miniz_oxide. Pick exactly one when building.
+fast-zlib-rs = ["flate2/zlib-rs"]          # pure-Rust zlib-ng port; no C toolchain
+fast-zlib-cf = ["flate2/cloudflare_zlib"]  # Cloudflare zlib (C via cc; no cmake)
+fast-zlib-ng = ["flate2/zlib-ng"]          # canonical zlib-ng (C; needs cmake)
+
 # OpenDAL-based storage backends (fs and http are always enabled)
 opendal-s3 = ["opendal/services-s3"]
 opendal-gcs = ["opendal/services-gcs"]
