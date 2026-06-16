@@ -375,7 +375,7 @@ impl Operation for MirrorOperation {
             let report = crate::report::ArchiveReport {
                 version: crate::report::REPORT_VERSION,
                 run_status: crate::report::RunStatus::Complete,
-                progress: crate::report::Progress::default(),
+                progress: stats.progress(),
                 section: stats.report_section().await,
             };
             crate::report::write_to_path(path, &report)

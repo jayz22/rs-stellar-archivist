@@ -70,13 +70,23 @@ impl MirrorCmd {
             /*update_well_known=*/ true,
         );
 
-        let pipeline = Pipeline::new(
+        let mut pipeline = Pipeline::new(
             operation,
             pipeline_config,
             src_store,
             Some(dst_store),
-            args.report_path,
+            args.report_path.clone(),
         );
+
+        if let Some(rp) = args.report_path.clone() {
+            let cp = std::sync::Arc::new(crate::checkpoint::single_section_checkpointer(
+                rp,
+                args.checkpoint_interval,
+                std::time::Duration::from_secs(30),
+                pipeline.stats_arc(),
+            ));
+            pipeline.set_checkpointer(cp);
+        }
 
         pipeline.run().await.map_err(utils::map_pipeline_error)?;
 

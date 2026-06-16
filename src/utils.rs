@@ -306,6 +306,10 @@ pub struct ArchiveStats {
     pub skipped_files: AtomicU64,
     pub retry_count: AtomicU64,
     pub failures: tokio::sync::Mutex<FailureTracker>,
+    /// Total checkpoints in the run (set by the pipeline before iteration starts).
+    pub total_checkpoints: AtomicU64,
+    /// Checkpoints completed so far (incremented in the pipeline completion closure).
+    pub processed_checkpoints: AtomicU64,
 }
 
 impl Default for ArchiveStats {
@@ -322,6 +326,16 @@ impl ArchiveStats {
             skipped_files: AtomicU64::new(0),
             retry_count: AtomicU64::new(0),
             failures: tokio::sync::Mutex::new(FailureTracker::default()),
+            total_checkpoints: AtomicU64::new(0),
+            processed_checkpoints: AtomicU64::new(0),
+        }
+    }
+
+    /// Current progress snapshot (cheap — both are atomics).
+    pub fn progress(&self) -> crate::report::Progress {
+        crate::report::Progress {
+            processed_checkpoints: self.processed_checkpoints.load(Ordering::Relaxed),
+            total_checkpoints: self.total_checkpoints.load(Ordering::Relaxed),
         }
     }
 

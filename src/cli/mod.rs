@@ -107,6 +107,14 @@ struct Cli {
     /// Write a JSON status report to this local path
     #[arg(long, global = true)]
     report: Option<std::path::PathBuf>,
+
+    /// Flush a periodic report snapshot every N completed checkpoints (0 = off)
+    #[arg(long, global = true, default_value_t = 200)]
+    checkpoint_interval: usize,
+
+    /// Resume from a prior interrupted run (load failures from --report path)
+    #[arg(long, global = true)]
+    resume: bool,
 }
 
 #[derive(Subcommand, Debug)]
@@ -127,6 +135,8 @@ pub struct GlobalArgs {
     pub storage_config: StorageConfig,
     pub verify: bool,
     pub report_path: Option<std::path::PathBuf>,
+    pub checkpoint_interval: usize,
+    pub resume: bool,
 }
 
 /// Run the CLI with the given arguments
@@ -173,6 +183,8 @@ where
         ),
         verify: cli.verify,
         report_path: cli.report,
+        checkpoint_interval: cli.checkpoint_interval,
+        resume: cli.resume,
     };
 
     match cli.command {

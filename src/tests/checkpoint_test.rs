@@ -2,6 +2,9 @@ use crate::checkpoint::{Checkpointer, RenderFn};
 use crate::report::{Progress, RunStatus};
 use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
 
+use super::utils::{file_url_from_path, testnet_small_archive_path};
+use crate::test_helpers::ScanConfig;
+
 fn counting_render(calls: Arc<AtomicU64>) -> RenderFn {
     Arc::new(move |status: RunStatus, progress: Progress| {
         let calls = calls.clone();
@@ -91,4 +94,83 @@ fn checkpointer_load_reads_prior_failures() {
     write_to_path_atomic(&path, &ArchiveReport::from_failures_and_summary(&t, Default::default())).unwrap();
     let loaded = Checkpointer::load(&path).unwrap();
     assert!(loaded.checkpoints.contains(&127));
+}
+
+/// Integration test: scan the local testnet-archive-small fixture with
+/// checkpoint-interval 1 and a report path, then verify the written report
+/// has `run_status == Complete` (finalize overwrites the last periodic flush)
+/// and that `progress.processed_checkpoints == progress.total_checkpoints > 0`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn scan_report_has_progress_and_complete_status() {
+    let dir = tempfile::tempdir().unwrap();
+    let report_path = dir.path().join("scan-report.json");
+
+    let archive_url = file_url_from_path(&testnet_small_archive_path());
+
+    // Bound the scan to the first four checkpoints in the fixture so the test
+    // stays fast. 0x6ff = 1791 covers 0x63f, 0x67f, 0x6bf, 0x6ff.
+    let config = ScanConfig::new(&archive_url)
+        .skip_optional()
+        .high(0x6ff);
+
+    let src_store = crate::storage::from_url_with_config(
+        &config.archive,
+        &config.storage_config,
+    )
+    .unwrap();
+    let pipeline_config = crate::pipeline::PipelineConfig {
+        concurrency: config.concurrency,
+        skip_optional: config.skip_optional,
+        skip_history_and_buckets: false,
+        verify: config.verify,
+        storage_config: config.storage_config.clone(),
+    };
+    let operation = crate::scan_operation::ScanOperation::new(
+        config.low,
+        config.high,
+        pipeline_config.clone(),
+    );
+    let mut pipeline = crate::pipeline::Pipeline::new(
+        operation,
+        pipeline_config,
+        src_store,
+        None,
+        Some(report_path.clone()),
+    );
+
+    // Wire the checkpointer at interval=1 so every checkpoint triggers a flush.
+    // Backstop is set high so only the count gate fires during the run.
+    let cp = std::sync::Arc::new(crate::checkpoint::single_section_checkpointer(
+        report_path.clone(),
+        /*interval*/ 1,
+        std::time::Duration::from_secs(3600),
+        pipeline.stats_arc(),
+    ));
+    pipeline.set_checkpointer(cp);
+
+    pipeline
+        .run()
+        .await
+        .map_err(crate::utils::map_pipeline_error)
+        .expect("scan should succeed on the small testnet fixture");
+
+    // Read back the report written by finalize (last writer wins).
+    let report = crate::report::read_from_path(&report_path).unwrap();
+
+    // Finalize must overwrite the last periodic flush with Complete status.
+    assert_eq!(
+        report.run_status,
+        crate::report::RunStatus::Complete,
+        "finalize must overwrite the last periodic flush with Complete"
+    );
+
+    assert!(
+        report.progress.total_checkpoints > 0,
+        "total_checkpoints must be populated by the pipeline"
+    );
+    assert_eq!(
+        report.progress.processed_checkpoints,
+        report.progress.total_checkpoints,
+        "processed == total at end of a complete run"
+    );
 }

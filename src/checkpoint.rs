@@ -113,3 +113,30 @@ impl Checkpointer {
         Ok(())
     }
 }
+
+/// Build a `Checkpointer` whose periodic render is a single-section `ArchiveReport`
+/// projected from `stats`. Used by scan/mirror/repair for periodic and on-signal
+/// snapshots. `backstop` is typically 30s; pass `Duration::from_secs(30)` at the
+/// call site.
+pub fn single_section_checkpointer(
+    report_path: std::path::PathBuf,
+    interval: usize,
+    backstop: Duration,
+    stats: std::sync::Arc<crate::utils::ArchiveStats>,
+) -> Checkpointer {
+    use crate::report::{ArchiveReport, REPORT_VERSION};
+    let render: RenderFn = std::sync::Arc::new(move |status, progress| {
+        let stats = stats.clone();
+        Box::pin(async move {
+            let section = stats.report_section().await;
+            serde_json::to_value(ArchiveReport {
+                version: REPORT_VERSION,
+                run_status: status,
+                progress,
+                section,
+            })
+            .map_err(ReportError::from)
+        })
+    });
+    Checkpointer::new(report_path, interval, backstop, 0, render)
+}

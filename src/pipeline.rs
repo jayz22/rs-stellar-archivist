@@ -242,6 +242,9 @@ pub struct Pipeline<Op: Operation> {
     /// `operation.finalize`. Owned solely by the pipeline (not per-stats) so
     /// sub-stats can't disagree about where the report goes.
     report_path: Option<std::path::PathBuf>,
+    /// Optional periodic checkpointer — flushed inside the per-checkpoint
+    /// completion closure and seeded with `total_count` before the loop starts.
+    checkpointer: Option<std::sync::Arc<crate::checkpoint::Checkpointer>>,
 }
 
 impl<Op: Operation> Pipeline<Op> {
@@ -268,7 +271,13 @@ impl<Op: Operation> Pipeline<Op> {
             bucket_lru,
             verification_manager,
             report_path,
+            checkpointer: None,
         }
+    }
+
+    /// Attach a periodic checkpointer to this pipeline. Call before `run()`.
+    pub fn set_checkpointer(&mut self, cp: std::sync::Arc<crate::checkpoint::Checkpointer>) {
+        self.checkpointer = Some(cp);
     }
 
     /// Read-only handle to the pipeline's owned `ArchiveStats`. Use this when
@@ -298,6 +307,12 @@ impl<Op: Operation> Pipeline<Op> {
             .await?;
 
         let total_count = history_format::count_checkpoints_in_range(lower_bound, upper_bound);
+        self.stats
+            .total_checkpoints
+            .store(total_count as u64, std::sync::atomic::Ordering::Relaxed);
+        if let Some(cp) = &self.checkpointer {
+            cp.set_total(total_count as u64);
+        }
         if total_count != 0 {
             let checkpoints =
                 (lower_bound..=upper_bound).step_by(history_format::CHECKPOINT_FREQUENCY as usize);
@@ -336,12 +351,18 @@ impl<Op: Operation> Pipeline<Op> {
             .for_each_concurrent(self.config.concurrency, |ck| async move {
                 self.process_checkpoint(ck).await;
                 let done = completed_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                self.stats
+                    .processed_checkpoints
+                    .store(done as u64, std::sync::atomic::Ordering::Relaxed);
                 if done.is_multiple_of(PROGRESS_REPORTING_FREQUENCY) || total == Some(done) {
                     if let Some(total) = total {
                         info!("Progress: {done}/{total} checkpoints processed");
                     } else {
                         info!("Progress: {done} checkpoints processed");
                     }
+                }
+                if let Some(cp) = &self.checkpointer {
+                    cp.maybe_flush(done).await;
                 }
             })
             .await;
