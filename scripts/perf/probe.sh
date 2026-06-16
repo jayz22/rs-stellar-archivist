@@ -46,22 +46,29 @@ fi
 
 echo "target : pid $PID ($(ps -o comm= -p "$PID" | xargs)), $(ps -o nlwp= -p "$PID" | xargs) threads, ${NCPU} cores"
 
+# Sample everything cheaply (df is O(1); du on a TB tree is not — using du here
+# would make the real window >> $INT and inflate the per-second rates). Derive
+# the TRUE elapsed seconds from real timestamps so the rates are correct even if
+# a sample call isn't instant.
+ts1=$(date +%s.%N)
 read -r _ a b c idle _ < /proc/stat; t1=$((a+b+c+idle)); i1=$idle
 pu1=$(awk '{print $14+$15}' "/proc/$PID/stat" 2>/dev/null)
-[ -n "$DIR" ] && s1=$(du -sb "$DIR" 2>/dev/null | cut -f1)
+[ -n "$DIR" ] && u1=$(df -B1 --output=used "$DIR" 2>/dev/null | tail -1)
 sleep "$INT"
 read -r _ a b c idle _ < /proc/stat; t2=$((a+b+c+idle)); i2=$idle
 pu2=$(awk '{print $14+$15}' "/proc/$PID/stat" 2>/dev/null)
+[ -n "$DIR" ] && u2=$(df -B1 --output=used "$DIR" 2>/dev/null | tail -1)
+ts2=$(date +%s.%N)
+EL=$(awk -v a="$ts1" -v b="$ts2" 'BEGIN{printf "%.3f", b-a}')
 
 awk -v dt=$((t2-t1)) -v di=$((i2-i1)) -v n="$NCPU" \
-  'BEGIN{busy=100*(dt-di)/dt; printf "sys CPU: %.1f%% busy / %.1f%% idle  (~%.1f of %d cores)\n", busy, 100-busy, busy/100*n, n}'
-awk -v d=$((pu2-pu1)) -v clk="$CLK" -v win="$INT" \
-  'BEGIN{printf "proc CPU: %.0f%%  (%.2f cores-equiv)\n", 100*d/clk/win, d/clk/win}'
-echo "loadavg: $(cut -d' ' -f1-3 /proc/loadavg)  (CPU-bound on ${NCPU} cores => load ~${NCPU})"
+  'BEGIN{busy=100*(dt-di)/dt; printf "sys CPU : %.1f%% busy / %.1f%% idle  (~%.1f of %d cores)\n", busy, 100-busy, busy/100*n, n}'
+awk -v d=$((pu2-pu1)) -v clk="$CLK" -v el="$EL" \
+  'BEGIN{printf "proc CPU: %.0f%%  (%.2f cores-equiv, over %.1fs)\n", 100*d/clk/el, d/clk/el, el}'
+echo "loadavg : $(cut -d' ' -f1-3 /proc/loadavg)  (CPU-bound on ${NCPU} cores => load ~${NCPU})"
 echo "proc RSS: $(awk '/VmRSS/{printf "%.0f MB (current, not peak)", $2/1024}' "/proc/$PID/status" 2>/dev/null)"
 if [ -n "$DIR" ]; then
-  s2=$(du -sb "$DIR" 2>/dev/null | cut -f1)
-  awk -v d=$((s2-s1)) -v win="$INT" -v dir="$DIR" \
-    'BEGIN{printf "I/O    : %.1f MB/s into %s\n", d/1e6/win, dir}'
+  awk -v d=$((u2-u1)) -v el="$EL" -v dir="$DIR" \
+    'BEGIN{printf "I/O     : %.1f MB/s onto the fs holding %s\n", d/1e6/el, dir}'
 fi
 echo "verdict: low sys-CPU% + steady I/O => I/O/network-bound; sys-CPU% ~= 100%*cores => CPU-bound."
