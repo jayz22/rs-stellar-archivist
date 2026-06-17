@@ -1,0 +1,26 @@
+[2m2026-06-17T00:03:01.157355Z[0m [32m INFO[0m Starting scan of file:///data/perf/fixture
+[2m2026-06-17T00:03:01.157370Z[0m [32m INFO[0m Scanning from ledger 62918015 onwards
+[2m2026-06-17T00:03:01.157376Z[0m [32m INFO[0m Scanning up to checkpoint 63046015
+[2m2026-06-17T00:03:01.158109Z[0m [32m INFO[0m Processing 2001 checkpoints from 62918015 (0x03c00d7f) to 63046015 (0x03c2017f)
+[2m2026-06-17T00:03:18.940504Z[0m [32m INFO[0m Progress: 100/2001 checkpoints processed
+[2m2026-06-17T00:03:26.534266Z[0m [32m INFO[0m Progress: 200/2001 checkpoints processed
+[2m2026-06-17T00:03:34.224154Z[0m [32m INFO[0m Progress: 300/2001 checkpoints processed
+[2m2026-06-17T00:03:42.664610Z[0m [32m INFO[0m Progress: 400/2001 checkpoints processed
+[2m2026-06-17T00:03:52.146517Z[0m [32m INFO[0m Progress: 500/2001 checkpoints processed
+[2m2026-06-17T00:04:00.390913Z[0m [32m INFO[0m Progress: 600/2001 checkpoints processed
+[2m2026-06-17T00:04:09.058169Z[0m [32m INFO[0m Progress: 700/2001 checkpoints processed
+[2m2026-06-17T00:04:17.343444Z[0m [32m INFO[0m Progress: 800/2001 checkpoints processed
+[2m2026-06-17T00:04:25.966549Z[0m [32m INFO[0m Progress: 900/2001 checkpoints processed
+[2m2026-06-17T00:04:34.444245Z[0m [32m INFO[0m Progress: 1000/2001 checkpoints processed
+[2m2026-06-17T00:04:42.882034Z[0m [32m INFO[0m Progress: 1100/2001 checkpoints processed
+[2m2026-06-17T00:04:48.887604Z[0m [32m INFO[0m Progress: 1200/2001 checkpoints processed
+[2m2026-06-17T00:04:55.941469Z[0m [32m INFO[0m Progress: 1300/2001 checkpoints processed
+[2m2026-06-17T00:05:04.725735Z[0m [32m INFO[0m Progress: 1400/2001 checkpoints processed
+[2m2026-06-17T00:05:13.744481Z[0m [32m INFO[0m Progress: 1500/2001 checkpoints processed
+[2m2026-06-17T00:05:21.186930Z[0m [32m INFO[0m Progress: 1600/2001 checkpoints processed
+[2m2026-06-17T00:05:28.409603Z[0m [32m INFO[0m Progress: 1700/2001 checkpoints processed
+[2m2026-06-17T00:05:35.897416Z[0m [32m INFO[0m Progress: 1800/2001 checkpoints processed
+[2m2026-06-17T00:05:44.392294Z[0m [32m INFO[0m Progress: 1900/2001 checkpoints processed
+[2m2026-06-17T00:05:55.047878Z[0m [32m INFO[0m Progress: 2000/2001 checkpoints processed
+[2m2026-06-17T00:05:55.111767Z[0m [32m INFO[0m Progress: 2001/2001 checkpoints processed
+[2m2026-06-17T00:05:55.111866Z[0m [32m INFO[0m Scan complete: 26464 files found, 0 missing

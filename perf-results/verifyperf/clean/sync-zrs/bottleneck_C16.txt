@@ -1,0 +1,44 @@
+=== bottleneck sample 1  2026-06-17T00:22:12Z ===
+=== bottleneck probe: pid 24867 (sa-perf-sync-zr), 107 threads, 32 cores, 5.003s window ===
+[1] CPU        : sys 11.4% busy (~3.6/32 cores)  | proc 3.33 cores
+[2] Net BW     : RX 0.0 MB/s, TX 0.0 MB/s
+[3] Net reqs   : RX 2 pkt/s (avg 140 B/pkt), TX 1 pkt/s
+[4] Conns      : 0 established(:443, this pid) | syn-sent 0 | time-wait(:443,all) 0
+[5] Disk BW    : write 0.0 MB/s, read 546.2 MB/s (nvme0n1 nvme1n1)
+[6] Disk IOPS  : 0 write/s, 4364 read/s
+[7] Disk lat   : %util 6%, write await 0.00 ms
+[8] Threads    : states { S=106 R=1 } | blocked-on: futex_do_wait(102) 0(3) hrtimer_nanosleep(1) ep_poll(1) 
+=== VERDICT: NETWORK-LATENCY / CONCURRENCY-bound (CPU idle, disk idle, BW < ceiling => waiting on round-trips or locks; check [3] pps, [4] conns, [8] futex) ===
+=== bottleneck sample 2  2026-06-17T00:22:37Z ===
+=== bottleneck probe: pid 24867 (sa-perf-sync-zr), 129 threads, 32 cores, 5.003s window ===
+[1] CPU        : sys 11.9% busy (~3.8/32 cores)  | proc 3.55 cores
+[2] Net BW     : RX 0.0 MB/s, TX 0.0 MB/s
+[3] Net reqs   : RX 5 pkt/s (avg 273 B/pkt), TX 5 pkt/s
+[4] Conns      : 0 established(:443, this pid) | syn-sent 0 | time-wait(:443,all) 1
+[5] Disk BW    : write 0.0 MB/s, read 430.5 MB/s (nvme0n1 nvme1n1)
+[6] Disk IOPS  : 0 write/s, 3576 read/s
+[7] Disk lat   : %util 6%, write await 0.00 ms
+[8] Threads    : states { S=128 R=1 } | blocked-on: futex_do_wait(121) 0(6) hrtimer_nanosleep(1) ep_poll(1) 
+=== VERDICT: NETWORK-LATENCY / CONCURRENCY-bound (CPU idle, disk idle, BW < ceiling => waiting on round-trips or locks; check [3] pps, [4] conns, [8] futex) ===
+=== bottleneck sample 3  2026-06-17T00:23:02Z ===
+=== bottleneck probe: pid 24867 (sa-perf-sync-zr), 135 threads, 32 cores, 5.003s window ===
+[1] CPU        : sys 11.7% busy (~3.7/32 cores)  | proc 3.41 cores
+[2] Net BW     : RX 0.0 MB/s, TX 0.0 MB/s
+[3] Net reqs   : RX 2 pkt/s (avg 122 B/pkt), TX 1 pkt/s
+[4] Conns      : 0 established(:443, this pid) | syn-sent 0 | time-wait(:443,all) 1
+[5] Disk BW    : write 0.0 MB/s, read 481.3 MB/s (nvme0n1 nvme1n1)
+[6] Disk IOPS  : 1 write/s, 3881 read/s
+[7] Disk lat   : %util 6%, write await 0.67 ms
+[8] Threads    : states { S=133 R=2 } | blocked-on: futex_do_wait(131) 0(2) hrtimer_nanosleep(1) ep_poll(1) 
+=== VERDICT: NETWORK-LATENCY / CONCURRENCY-bound (CPU idle, disk idle, BW < ceiling => waiting on round-trips or locks; check [3] pps, [4] conns, [8] futex) ===
+=== bottleneck sample 4  2026-06-17T00:23:27Z ===
+=== bottleneck probe: pid 24867 (sa-perf-sync-zr), 147 threads, 32 cores, 5.003s window ===
+[1] CPU        : sys 9.1% busy (~2.9/32 cores)  | proc 2.90 cores
+[2] Net BW     : RX 0.0 MB/s, TX 0.0 MB/s
+[3] Net reqs   : RX 2 pkt/s (avg 127 B/pkt), TX 2 pkt/s
+[4] Conns      : 0 established(:443, this pid) | syn-sent 0 | time-wait(:443,all) 2
+[5] Disk BW    : write 0.0 MB/s, read 0.0 MB/s (nvme0n1 nvme1n1)
+[6] Disk IOPS  : 0 write/s, 0 read/s
+[7] Disk lat   : %util 0%, write await 0.00 ms
+[8] Threads    : states { S=145 R=2 } | blocked-on: futex_do_wait(144) hrtimer_nanosleep(1) ep_poll(1) 0(1) 
+=== VERDICT: NETWORK-LATENCY / CONCURRENCY-bound (CPU idle, disk idle, BW < ceiling => waiting on round-trips or locks; check [3] pps, [4] conns, [8] futex) ===

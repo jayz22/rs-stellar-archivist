@@ -147,6 +147,84 @@ self-time summed across concurrent tasks and **overlap wall-clock** — read as
 
 ---
 
+## Verify CPU-scaling experiment (perf-verify-speedup) — ✅ RESOLVED
+
+> ⚠️ **Different hardware.** Unlike the rest of this report (Graviton2/aarch64),
+> this section was measured on an **AMD Ryzen 9 9950X (x86_64, 16C/32T, Zen 5,
+> `sha_ni` + AVX-512), 60 GiB RAM**, on a **quiet** box (no competing load). The
+> earlier verify-speedup numbers (HANDOFF.md) were taken on the Graviton2 box
+> **while a full-pubnet mirror ran concurrently** and were therefore declared
+> untrustworthy. This is the clean re-measurement. **Absolute wall times are NOT
+> comparable to the Graviton2 Stage 2.1 numbers above** (different ISA/µarch — the
+> Ryzen is ~4× faster per core here); only the **cross-variant** comparison below
+> and the **qualitative** bottleneck verdict carry over.
+
+**Question.** Does `--verify` plateau at ~4 cores because of (a) the competing
+mirror (contamination), (b) the async decode path's per-chunk channel/`await`
+overhead, or (c) an intrinsic limit of the workload (the few multi-GB buckets are
+a serial gzip long-pole; dedup leaves little independent decode work)? The
+HANDOFF could not tell these apart under contamination.
+
+**Method.** Same fixture (byte-identical: same source, bounds
+`62,918,015→63,046,015`, 55 GB / 26,464 files, ~183 GB decompressed), warm cache,
+`scan --verify` at `-c ∈ {1,4,16}`, 1 rep, **2×2 variant matrix** isolating the
+two levers — decode path (async = pre-Phase-2 `6e5e58e`; sync = Phase 2 HEAD) ×
+gzip backend (miniz_oxide default vs zlib-rs via `--features fast-zlib-rs`).
+`bottleneck.sh` sampled 4× during each c=16 run. **All 12 runs exit 0, 0 broken,
+0 retries.**
+
+### Wall (s) / peak RSS (MB, OS) — Ryzen 9950X, warm, 1 rep
+
+| variant (decode × backend) | c=1 | c=4 | c=16 |
+|---|---|---|---|
+| baseline (async × miniz) | 196.5 / 992 | 115.3 / 1151 | 114.3 / 1571 |
+| async × zlib-rs          | 174.0 / 930 | 113.0 / 1203 | 113.2 / 1456 |
+| sync × miniz             | 196.0 / **604** | 108.9 / 946 | 107.2 / 2103 |
+| sync × zlib-rs (combo)   | 173.9 / **640** | 108.9 / 1023 | **106.8** / **2238** |
+
+### Findings
+
+1. **The plateau is intrinsic — the long-pole, not contamination and not the
+   async overhead.** On a quiet box, on a *different architecture*, every variant
+   still bottoms out at **`-c=4`** (c=4 ≈ c=16 everywhere; ~1.6–1.8× over c=1,
+   matching Graviton2's 1.76×). `bottleneck.sh` at c=16 shows the **identical**
+   symptom seen under contamination: CPU idle (process consumes only **~3–4.5 of
+   32 cores**), disk idle, no network, 60–150 threads parked on `futex_do_wait`,
+   1–12 running. Throughput scales only **~1.7×** c=1→c=16 (≈930 → ≈1700 MB/s
+   decompressed ≈ **~1.8 effective decode cores**). After the small buckets finish
+   the run waits on the 2.36 GB bucket (+ a few ~480 MB) each inflating serially
+   on one core; dedup means few new buckets per checkpoint, so there is not enough
+   independent decode work to fill the cores.
+2. **Sync decode (Phase 2) did NOT meet its primary goal.** It removes both the
+   per-chunk `await` and the mpsc channel, yet core utilization is unchanged
+   (~3.5 cores) — so the `SyncIoBridge`/`block_on` and channel overhead were
+   **never** the limiter. Its real effects: **~5–6% wall** at c=4/16, neutral at
+   c=1; **single-stream RSS −39%** (992→604 MB, the standout win) but a **c=16 RSS
+   +34%** (1571→2103 MB), because `spawn_blocking` spins up 150+ threads each
+   holding decode buffers.
+3. **zlib-rs: ~11% single-stream win, vanishes under concurrency** (196→174 s at
+   c=1; tied with miniz at c=16). It shrinks the per-core long-pole, which is why
+   c=1 improves but the c=4 plateau barely moves. Pure-Rust, no new system deps.
+4. **Best combo (sync × zlib-rs) is only 6.6% faster** at c=16 than baseline
+   (106.8 vs 114.3 s) at the cost of the highest RSS — confirming there is no
+   large win to be had on this workload by either lever.
+
+### Decision
+
+**Verify is long-pole-bound; `-c≈4` is optimal and that is a property of the
+workload's bucket byte-skew, not of the decode implementation.** The single-gzip
+2.36 GB member cannot be parallelized without the producer (stellar-core)
+sharding buckets — explicitly out of scope. Recommendation: **adopt the zlib-rs
+backend** (real, low-risk ~10% single-stream win, no system deps); **do not ship
+the Phase 2 sync rewrite as the default** — its headline justification ("use the
+cores") is disproven, it regresses multi-core RSS, and its only clear win
+(single-stream memory) matters most exactly where you'd run low `-c`. Keep sync
+behind the experiment branch / consider it only for memory-constrained low-`-c`
+use. Raw artifacts: `perf-results/verifyperf/clean/` (per-variant run dirs +
+`bottleneck_C16.txt`), shared `perf-results/summary.csv`.
+
+---
+
 ## Stage 2.2 — Full pubnet (§6.2) — ⏳ NOT STARTED
 
 Planned: full genesis→tip mirror to `/data/pubnet-mirror` (`-c 32`), then remote

@@ -1,0 +1,29 @@
+START 2026-06-16T23:24:56Z
+[2m2026-06-16T23:24:56.894731Z[0m [32m INFO[0m Starting mirror from https://history.stellar.org/prd/core-live/core_live_001 to file:///data/perf/fixture with 32 workers
+[2m2026-06-16T23:24:57.276102Z[0m [31mERROR[0m Failed to download .well-known/stellar-history.json: Read error: NotFound (permanent) at read, context: { service: fs, path: .well-known/stellar-history.json, range: 0- } => entity not found, source: No such file or directory (os error 2)
+[2m2026-06-16T23:24:57.276136Z[0m [32m INFO[0m Processing 2001 checkpoints from 62918015 (0x03c00d7f) to 63046015 (0x03c2017f)
+[2m2026-06-16T23:25:58.973361Z[0m [32m INFO[0m Progress: 100/2001 checkpoints processed
+[2m2026-06-16T23:26:45.440733Z[0m [32m INFO[0m Progress: 200/2001 checkpoints processed
+[2m2026-06-16T23:27:32.462414Z[0m [32m INFO[0m Progress: 300/2001 checkpoints processed
+[2m2026-06-16T23:28:23.801248Z[0m [32m INFO[0m Progress: 400/2001 checkpoints processed
+[2m2026-06-16T23:29:19.962685Z[0m [32m INFO[0m Progress: 500/2001 checkpoints processed
+[2m2026-06-16T23:30:06.023512Z[0m [32m INFO[0m Progress: 600/2001 checkpoints processed
+[2m2026-06-16T23:31:01.595466Z[0m [32m INFO[0m Progress: 700/2001 checkpoints processed
+[2m2026-06-16T23:31:40.667036Z[0m [32m INFO[0m Progress: 800/2001 checkpoints processed
+[2m2026-06-16T23:32:26.712897Z[0m [32m INFO[0m Progress: 900/2001 checkpoints processed
+[2m2026-06-16T23:33:14.579190Z[0m [32m INFO[0m Progress: 1000/2001 checkpoints processed
+[2m2026-06-16T23:33:52.558083Z[0m [32m INFO[0m Progress: 1100/2001 checkpoints processed
+[2m2026-06-16T23:34:23.480674Z[0m [32m INFO[0m Progress: 1200/2001 checkpoints processed
+[2m2026-06-16T23:35:06.434286Z[0m [32m INFO[0m Progress: 1300/2001 checkpoints processed
+[2m2026-06-16T23:35:54.430887Z[0m [32m INFO[0m Progress: 1400/2001 checkpoints processed
+[2m2026-06-16T23:36:35.710340Z[0m [32m INFO[0m Progress: 1500/2001 checkpoints processed
+[2m2026-06-16T23:37:19.464372Z[0m [32m INFO[0m Progress: 1600/2001 checkpoints processed
+[2m2026-06-16T23:37:55.621856Z[0m [32m INFO[0m Progress: 1700/2001 checkpoints processed
+[2m2026-06-16T23:38:40.012719Z[0m [32m INFO[0m Progress: 1800/2001 checkpoints processed
+[2m2026-06-16T23:39:21.911094Z[0m [32m INFO[0m Progress: 1900/2001 checkpoints processed
+[2m2026-06-16T23:40:22.945308Z[0m [32m INFO[0m Progress: 2000/2001 checkpoints processed
+[2m2026-06-16T23:40:27.941585Z[0m [32m INFO[0m Progress: 2001/2001 checkpoints processed
+[2m2026-06-16T23:40:27.941736Z[0m [32m INFO[0m Mirror completed: 26464 files copied, 0 failed, 0 skipped
+[2m2026-06-16T23:40:27.941821Z[0m [32m INFO[0m No existing .well-known, creating new one at checkpoint 63046015 (0x03c2017f)
+[2m2026-06-16T23:40:27.941950Z[0m [32m INFO[0m Updated destination .well-known to checkpoint 63046015 (0x03c2017f)
+DONE rc=0 2026-06-16T23:40:27Z

@@ -1,5 +1,18 @@
 # HANDOFF — verify CPU-scaling experiment (perf-verify-speedup)
 
+> ## ✅ RESOLVED 2026-06-17 — clean re-measurement done
+> The contamination question below was resolved by re-running the full 2×2 matrix
+> on a **quiet AMD Ryzen 9 9950X (x86_64)** box (fixture rebuilt byte-identical
+> from pubnet). **Verdict: the ~4-core plateau is INTRINSIC (the multi-GB-bucket
+> serial gzip long-pole), not contamination and not the async decode overhead** —
+> it reproduces on quiet x86 with both async and sync decode. Sync (Phase 2) does
+> not raise core use; zlib-rs gives ~11% single-stream only. **Recommendation:
+> adopt zlib-rs, do not ship Phase 2 sync as default.** Full write-up +
+> data: `docs/perf-report-graviton-pubnet.md` § "Verify CPU-scaling experiment"
+> and `perf-results/verifyperf/clean/`. ⚠️ Caveat: re-measured on x86, not the
+> Graviton2 production target — qualitative conclusion is cross-arch, absolute
+> times are not. The historical, contamination-flagged narrative is kept below.
+
 > **Purpose:** full session state so a fresh Claude Code session — ideally on a
 > **dedicated, quiet machine** — can resume and run clean measurements. Written
 > 2026-06-16. Branch `perf-verify-speedup` (worktree

@@ -1,0 +1,1 @@
+bin/sa-perf-sync-zrs scan file:///data/perf/fixture --verify --low 62918015 --high 63046015 -c 4 --report perf-results/verifyperf/clean/sync-zrs/scanverify_C4_r1/report.json

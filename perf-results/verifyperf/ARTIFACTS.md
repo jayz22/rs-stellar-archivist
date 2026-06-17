@@ -44,6 +44,27 @@ Each per-run dir (written by `scripts/perf/run.sh`) contains:
 (wall_ms,peak_rss_mb,files,bytes,mb_per_s from in-process `sa-perf`),
 `phases.csv` (self-time phase breakdown), `timeseries.csv` (2 s RSS samples).
 
+## Clean re-measurement (`clean/`) — the resolving data
+
+The contaminated Phase 0/1/2 numbers (Graviton2, competing mirror) were
+re-measured on a **quiet AMD Ryzen 9 9950X (x86_64)** box. **Different hardware —
+absolute times are not comparable to the Graviton2 cells above; only the
+cross-variant deltas and the bottleneck verdict carry over.** Conclusion folded
+into `docs/perf-report-graviton-pubnet.md` § "Verify CPU-scaling experiment".
+
+```
+clean/
+  sweep.log                       # driver narration (warm + quiet check + per-run lines)
+  <variant>/                      # variant ∈ {baseline, zrs, sync, sync-zrs}
+    scanverify_C{1,4,16}_r1/       # standard per-run dir (cmd/std*/report/headline/phases/timeseries)
+    bottleneck_C16.txt            # 4× bottleneck.sh samples during the c=16 run (cores/threads/limiter)
+```
+Driver: `scripts/perf/clean_sweep.sh`. 2×2 matrix = decode path (async
+`6e5e58e` vs sync HEAD) × backend (miniz vs `fast-zlib-rs`). All 12 runs exit 0,
+0 broken. Result: plateau at `-c=4` and ~3–4 of 32 cores reproduce on quiet
+x86 → **intrinsic long-pole, not contamination**; sync ≈ neutral-to-+6% wall,
+−39% single-stream RSS but +34% c=16 RSS; zlib-rs ~11% single-stream only.
+
 ## Experiment → artifact map
 
 | Phase | What | Where |

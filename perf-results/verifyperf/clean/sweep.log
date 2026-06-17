@@ -1,0 +1,32 @@
+==== SWEEP START 2026-06-16T23:55:34Z ====
+[quiet check] competing sa/mirror procs:
+  none
+[warm] reading fixture into page cache...
+               total        used        free      shared  buff/cache   available
+Mem:            60Gi       9.6Gi       389Mi       138Mi        50Gi        50Gi
+Swap:          8.0Gi        18Mi       8.0Gi
+[run] verifyperf/clean/baseline/scanverify_C1_r1  (bin/sa-perf -c 1)  2026-06-16T23:55:43Z
+[verifyperf/clean/baseline/scanverify_C1_r1] exit=0 wall_ms=196480 rss_mb=1040.0 (os=991.8) files=26464
+[run] verifyperf/clean/baseline/scanverify_C4_r1  (bin/sa-perf -c 4)  2026-06-16T23:59:00Z
+[verifyperf/clean/baseline/scanverify_C4_r1] exit=0 wall_ms=115330 rss_mb=1207.2 (os=1151.3) files=26464
+[run] verifyperf/clean/baseline/scanverify_C16_r1  (bin/sa-perf -c 16)  2026-06-17T00:00:55Z
+[verifyperf/clean/baseline/scanverify_C16_r1] exit=0 wall_ms=114281 rss_mb=1646.9 (os=1570.6) files=26464
+[run] verifyperf/clean/zrs/scanverify_C1_r1  (bin/sa-perf-zrs -c 1)  2026-06-17T00:03:01Z
+[verifyperf/clean/zrs/scanverify_C1_r1] exit=0 wall_ms=173959 rss_mb=974.8 (os=929.7) files=26464
+[run] verifyperf/clean/zrs/scanverify_C4_r1  (bin/sa-perf-zrs -c 4)  2026-06-17T00:05:55Z
+[verifyperf/clean/zrs/scanverify_C4_r1] exit=0 wall_ms=112977 rss_mb=1261.6 (os=1203.2) files=26464
+[run] verifyperf/clean/zrs/scanverify_C16_r1  (bin/sa-perf-zrs -c 16)  2026-06-17T00:07:48Z
+[verifyperf/clean/zrs/scanverify_C16_r1] exit=0 wall_ms=113217 rss_mb=1526.5 (os=1455.8) files=26464
+[run] verifyperf/clean/sync/scanverify_C1_r1  (bin/sa-perf-sync -c 1)  2026-06-17T00:09:53Z
+[verifyperf/clean/sync/scanverify_C1_r1] exit=0 wall_ms=195978 rss_mb=633.8 (os=604.4) files=26464
+[run] verifyperf/clean/sync/scanverify_C4_r1  (bin/sa-perf-sync -c 4)  2026-06-17T00:13:09Z
+[verifyperf/clean/sync/scanverify_C4_r1] exit=0 wall_ms=108869 rss_mb=991.7 (os=945.8) files=26464
+[run] verifyperf/clean/sync/scanverify_C16_r1  (bin/sa-perf-sync -c 16)  2026-06-17T00:14:58Z
+[verifyperf/clean/sync/scanverify_C16_r1] exit=0 wall_ms=107240 rss_mb=2205.3 (os=2103.1) files=26464
+[run] verifyperf/clean/sync-zrs/scanverify_C1_r1  (bin/sa-perf-sync-zrs -c 1)  2026-06-17T00:17:04Z
+[verifyperf/clean/sync-zrs/scanverify_C1_r1] exit=0 wall_ms=173863 rss_mb=671.2 (os=640.1) files=26464
+[run] verifyperf/clean/sync-zrs/scanverify_C4_r1  (bin/sa-perf-sync-zrs -c 4)  2026-06-17T00:19:58Z
+[verifyperf/clean/sync-zrs/scanverify_C4_r1] exit=0 wall_ms=108935 rss_mb=1072.3 (os=1022.7) files=26464
+[run] verifyperf/clean/sync-zrs/scanverify_C16_r1  (bin/sa-perf-sync-zrs -c 16)  2026-06-17T00:21:47Z
+[verifyperf/clean/sync-zrs/scanverify_C16_r1] exit=0 wall_ms=106771 rss_mb=2346.7 (os=2238.0) files=26464
+==== SWEEP DONE 2026-06-17T00:23:52Z ====
