@@ -8,6 +8,78 @@
 
 ---
 
+## 🟢 START HERE — current state & instructions for the next agent (2026-06-17)
+
+**You (a fresh/compacted agent) are picking up the `--max-concurrent` experiment.**
+Everything you need is in this doc + the two companions named above. Read this
+section, then §3 (knob protocol), §4 (signals), §7 (politeness), §9 (harness).
+
+### Where things stand
+- **The verify CPU-scaling experiment is RESOLVED** (different effort, now done).
+  One-line: the `-c≈4` verify plateau is an *intrinsic* multi-GB-bucket serial
+  gzip long-pole; recommendation was *adopt `zlib-rs`, don't ship the sync
+  rewrite*. Full write-up: `docs/perf-report-graviton-pubnet.md` §"Verify
+  CPU-scaling experiment". **That work is not your concern** except that it built
+  the harness/tooling you'll reuse.
+- **This `--max-concurrent` experiment has NOT started.** It is the remaining open
+  thread. `--max-concurrent` is inert for `file://` (local CPU/disk binds), so
+  this is a **REMOTE** experiment — it needs a network archive.
+- **The box is now quiet.** Host `user-dev-007` (AWS Graviton2, aarch64, 32 vCPU,
+  ~123 GiB RAM; data volume `/data` = RAID0 NVMe). The Stage 2.2 full-pubnet
+  mirror that was contaminating earlier measurements has **finished / is no longer
+  running** (verified: no `*mirror*` process, load ~0). Measured pubnet link
+  ≈ **203 MB/s single-stream** (see `perf-results/env.txt`). Re-confirm quiet with
+  `scripts/perf/bottleneck.sh` before each run.
+- Worktree: `/home/jay/Projects/rs-stellar-archivist-verifyperf`, branch
+  `perf-verify-speedup` (pushed to `origin`). `cargo` is at `~/.cargo/bin`
+  (non-interactive shells: `export PATH="$HOME/.cargo/bin:$PATH"`).
+
+### ⛔ BLOCKER — get these 3 decisions from the user FIRST (see §10)
+Do not start runs until the user confirms. My recommended defaults (propose these):
+1. **Backend target → public `history.stellar.org`** (the realistic, polite
+   target). Treat rising `retry_count` as a hard stop (§7). Only switch to an
+   SDF-owned S3/GCS bucket if the user wants the *true high-concurrency ceiling*
+   rather than the polite one.
+2. **Scope → existence-scan + scan-verify** (existence-scan first: cheapest,
+   safest, most latency-sensitive — the knob helps most there; then scan-verify
+   for the bandwidth knee). Mirror optional/last.
+3. **Timing → now** (box is quiet). Don't run while anything else loads the box;
+   re-check with `bottleneck.sh`.
+
+### Concrete next steps (once decisions confirmed)
+1. Build a fresh `bin/sa-perf` (`--features perf-metrics`) on this box if not
+   present (recipe in `perf-results/verifyperf/ARTIFACTS.md`). `zlib-rs` backend
+   is fine to use but irrelevant here (remote = network-bound, not gzip-bound).
+2. Write `scripts/perf/maxconc_sweep.sh` (see §9) — mirrors the existing
+   `scripts/perf/verify_subsweep.sh`: fix `-c` HIGH (so checkpoint parallelism is
+   never the limiter — see §3), loop `--max-concurrent ∈ {8,16,32,64,128,256}`
+   (existence-scan may extend to 512), 1 rep, and sample `bottleneck.sh` mid-run.
+3. Per cell capture the **three signals** (§4): throughput knee (MB/s, files/s);
+   `retry_count`/per-type failures from `report.json` (**backend-health hard
+   stop**); peak RSS + FD/conn count (`ss -tnp | grep pid=`, `ls /proc/PID/fd`).
+   Plus `bottleneck.sh`'s named limiter verdict at the chosen `-c`.
+4. **Politeness is mandatory** for the public archive (§7): ramp low→high, stop
+   when retries climb, small windows, off-peak. Reuse the §6.1 fixture's
+   `--low 62918015 --high 63046015` range for verify cells but FETCH REMOTE
+   (`https://history.stellar.org/prd/core-live/core_live_001`), and bound smaller
+   (~200 cp) for verify/mirror cells to limit load; existence-scan can use a
+   bigger range (no payload).
+5. Phase A→D with approval gates (§8): present results + conclusion after each,
+   commit only after user approval, raw artifacts under
+   `perf-results/maxconc/<mode>/` (gitignored; force-add the small text artifacts
+   like the verify experiment did — see `perf-results/verifyperf/ARTIFACTS.md`
+   policy: keep everything, one `SA_PERF_OUT` dir per run, never `SA_PERF_OUT=""`).
+
+### Working-style reminders (from this project)
+- This perf work uses `target/release` builds (never debug). Save every run's
+  logs + `report.json` (the harness `run.sh` does this).
+- Use `bottleneck.sh` (not `probe.sh`) for the limiter verdict — `probe.sh`'s
+  per-process CPU read proved misleading in the verify experiment.
+- Present findings + wait for approval before committing each phase; the user
+  reviews per-phase.
+
+---
+
 ## 1. Goal & definition of "optimal"
 
 Find the `--max-concurrent` value that **maximizes throughput** for each
