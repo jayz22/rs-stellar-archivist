@@ -1,0 +1,14 @@
+--- nethealth sample 1 (mc=64) ---
+=== nethealth: pid 1586388 (sa-perf), 5.02s window, 32 cores ===
+[A] Cores      : app uses 1.07 cores of 32 | 1.1 core-equiv busy system-wide | 0 core(s) >50%
+[B] Threads    : 37 total, 2 running | states {R=1 S=36 } | parked-on: futex_wait_queue(33) ep_poll(2) hrtimer_nanosleep(1) 0(1) 
+[C] Conns      : 69 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 210 sockets sampled | rtt min 0.86 / mean 6.68 / max 66.01 ms | per-socket retrans total: 5
+[E] TCP health : retrans 0/41369 segs (0.000%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 29
+--- nethealth sample 2 (mc=64) ---
+=== nethealth: pid 1586388 (), 5.02s window, 32 cores ===
+[A] Cores      : app uses -2.81 cores of 32 | 1.0 core-equiv busy system-wide | 0 core(s) >50%
+[B] Threads    : 0 total, 0 running | states {} | parked-on: running(1) 
+[C] Conns      : 0 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 8 sockets sampled | rtt min 0.86 / mean 25.52 / max 63.42 ms | per-socket retrans total: 5
+[E] TCP health : retrans 0/37742 segs (0.000%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 62

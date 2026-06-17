@@ -1,0 +1,34 @@
+--- bottleneck sample 1 (mc=16) ---
+=== bottleneck probe: pid 1577358 (sa-perf), 37 threads, 32 cores, 4.014s window ===
+[1] CPU        : sys 0.9% busy (~0.3/32 cores)  | proc 0.27 cores
+[2] Net BW     : RX 2.0 MB/s, TX 0.5 MB/s
+[3] Net reqs   : RX 2340 pkt/s (avg 846 B/pkt), TX 1835 pkt/s
+[4] Conns      : 18 established(:443, this pid) | syn-sent 0 | time-wait(:443,all) 11
+[5] Disk BW    : write 0.0 MB/s, read 0.0 MB/s (nvme1n1 nvme2n1)
+[6] Disk IOPS  : 0 write/s, 0 read/s
+[7] Disk lat   : %util 0%, write await 0.00 ms
+[8] Threads    : states { S=37 } | blocked-on: futex_wait_queue(35) hrtimer_nanosleep(1) ep_poll(1) 
+=== VERDICT: NETWORK-LATENCY / CONCURRENCY-bound (CPU idle, disk idle, BW < ceiling => waiting on round-trips or locks; check [3] pps, [4] conns, [8] futex) ===
+--- bottleneck sample 2 (mc=16) ---
+=== bottleneck probe: pid 1577358 (sa-perf), 37 threads, 32 cores, 4.014s window ===
+[1] CPU        : sys 1.3% busy (~0.4/32 cores)  | proc 0.27 cores
+[2] Net BW     : RX 2.0 MB/s, TX 0.5 MB/s
+[3] Net reqs   : RX 2321 pkt/s (avg 840 B/pkt), TX 1843 pkt/s
+[4] Conns      : 22 established(:443, this pid) | syn-sent 0 | time-wait(:443,all) 10
+[5] Disk BW    : write 0.0 MB/s, read 0.0 MB/s (nvme1n1 nvme2n1)
+[6] Disk IOPS  : 0 write/s, 0 read/s
+[7] Disk lat   : %util 0%, write await 0.00 ms
+[8] Threads    : states { S=36 R=1 } | blocked-on: futex_wait_queue(35) hrtimer_nanosleep(1) 0(1) 
+=== VERDICT: NETWORK-LATENCY / CONCURRENCY-bound (CPU idle, disk idle, BW < ceiling => waiting on round-trips or locks; check [3] pps, [4] conns, [8] futex) ===
+--- bottleneck sample 3 (mc=16) ---
+ls: cannot access '/proc/1577358/task': No such file or directory
+=== bottleneck probe: pid 1577358 (), 0 threads, 32 cores, 4.014s window ===
+[1] CPU        : sys 0.9% busy (~0.3/32 cores)  | proc 0.27 cores
+[2] Net BW     : RX 1.9 MB/s, TX 0.5 MB/s
+[3] Net reqs   : RX 2263 pkt/s (avg 836 B/pkt), TX 1807 pkt/s
+[4] Conns      : 20 established(:443, this pid) | syn-sent 0 | time-wait(:443,all) 10
+[5] Disk BW    : write 0.0 MB/s, read 0.0 MB/s (nvme1n1 nvme2n1)
+[6] Disk IOPS  : 0 write/s, 0 read/s
+[7] Disk lat   : %util 0%, write await 0.00 ms
+[8] Threads    : states { S=15 D=1 } | blocked-on: running(1) 
+=== VERDICT: NETWORK-LATENCY / CONCURRENCY-bound (CPU idle, disk idle, BW < ceiling => waiting on round-trips or locks; check [3] pps, [4] conns, [8] futex) ===

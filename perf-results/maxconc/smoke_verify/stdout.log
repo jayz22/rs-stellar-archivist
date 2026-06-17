@@ -1,0 +1,6 @@
+[2m2026-06-17T16:12:47.666594Z[0m [32m INFO[0m Starting scan of https://history.stellar.org/prd/core-live/core_live_001
+[2m2026-06-17T16:12:47.666654Z[0m [32m INFO[0m Scanning from ledger 63045900 onwards
+[2m2026-06-17T16:12:47.666667Z[0m [32m INFO[0m Scanning up to checkpoint 63046015
+[2m2026-06-17T16:12:47.872238Z[0m [32m INFO[0m Processing 3 checkpoints from 63045887 (0x03c200ff) to 63046015 (0x03c2017f)
+[2m2026-06-17T16:13:42.139561Z[0m [32m INFO[0m Progress: 3/3 checkpoints processed
+[2m2026-06-17T16:13:42.139627Z[0m [32m INFO[0m Scan complete: 67 files found, 0 missing

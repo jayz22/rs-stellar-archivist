@@ -1,0 +1,6 @@
+=== nethealth: pid 1588844 (sa-perf), 4.02s window, 32 cores ===
+[A] Cores      : app uses 1.13 cores of 32 | 1.4 core-equiv busy system-wide | 0 core(s) >50%
+[B] Threads    : 37 total, 1 running | states {R=1 S=36 } | parked-on: futex_wait_queue(34) 0(2) hrtimer_nanosleep(1) 
+[C] Conns      : 65 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 213 sockets sampled | rtt min 0.33 / mean 9.04 / max 474.00 ms | per-socket retrans total: 5
+[E] TCP health : retrans 0/34268 segs (0.000%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 0

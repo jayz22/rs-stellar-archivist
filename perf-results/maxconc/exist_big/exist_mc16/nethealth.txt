@@ -1,0 +1,56 @@
+--- nethealth sample 1 (mc=16) ---
+=== nethealth: pid 1582187 (sa-perf), 5.02s window, 32 cores ===
+[A] Cores      : app uses 0.26 cores of 32 | 0.3 core-equiv busy system-wide | 0 core(s) >50%
+[B] Threads    : 37 total, 0 running | states {S=37 } | parked-on: futex_wait_queue(34) hrtimer_nanosleep(1) ep_poll(1) 0(1) 
+[C] Conns      : 18 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 64 sockets sampled | rtt min 0.86 / mean 15.92 / max 476.00 ms | per-socket retrans total: 5
+[E] TCP health : retrans 0/8787 segs (0.000%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 0
+--- nethealth sample 2 (mc=16) ---
+=== nethealth: pid 1582187 (sa-perf), 5.02s window, 32 cores ===
+[A] Cores      : app uses 0.27 cores of 32 | 0.3 core-equiv busy system-wide | 0 core(s) >50%
+[B] Threads    : 37 total, 0 running | states {R=1 S=36 } | parked-on: futex_wait_queue(36) hrtimer_nanosleep(1) 
+[C] Conns      : 23 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 74 sockets sampled | rtt min 0.86 / mean 14.01 / max 476.00 ms | per-socket retrans total: 5
+[E] TCP health : retrans 0/9456 segs (0.000%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 0
+--- nethealth sample 3 (mc=16) ---
+=== nethealth: pid 1582187 (sa-perf), 5.02s window, 32 cores ===
+[A] Cores      : app uses 0.27 cores of 32 | 0.3 core-equiv busy system-wide | 0 core(s) >50%
+[B] Threads    : 37 total, 1 running | states {R=1 S=36 } | parked-on: futex_wait_queue(35) hrtimer_nanosleep(1) ep_poll(1) 
+[C] Conns      : 17 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 60 sockets sampled | rtt min 0.86 / mean 16.62 / max 476.00 ms | per-socket retrans total: 5
+[E] TCP health : retrans 0/9153 segs (0.000%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 0
+--- nethealth sample 4 (mc=16) ---
+=== nethealth: pid 1582187 (sa-perf), 5.02s window, 32 cores ===
+[A] Cores      : app uses 0.28 cores of 32 | 0.4 core-equiv busy system-wide | 0 core(s) >50%
+[B] Threads    : 37 total, 0 running | states {S=37 } | parked-on: futex_wait_queue(35) hrtimer_nanosleep(1) ep_poll(1) 
+[C] Conns      : 24 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 77 sockets sampled | rtt min 0.86 / mean 13.29 / max 476.00 ms | per-socket retrans total: 5
+[E] TCP health : retrans 0/9666 segs (0.000%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 1 | estab-resets 0 | active-opens 21
+--- nethealth sample 5 (mc=16) ---
+=== nethealth: pid 1582187 (sa-perf), 5.02s window, 32 cores ===
+[A] Cores      : app uses 0.29 cores of 32 | 0.3 core-equiv busy system-wide | 0 core(s) >50%
+[B] Threads    : 37 total, 0 running | states {S=37 } | parked-on: futex_wait_queue(36) hrtimer_nanosleep(1) 
+[C] Conns      : 16 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 61 sockets sampled | rtt min 0.86 / mean 16.04 / max 476.00 ms | per-socket retrans total: 5
+[E] TCP health : retrans 0/10103 segs (0.000%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 0
+--- nethealth sample 6 (mc=16) ---
+=== nethealth: pid 1582187 (sa-perf), 5.02s window, 32 cores ===
+[A] Cores      : app uses 0.28 cores of 32 | 0.4 core-equiv busy system-wide | 0 core(s) >50%
+[B] Threads    : 37 total, 1 running | states {S=37 } | parked-on: futex_wait_queue(35) hrtimer_nanosleep(1) ep_poll(1) 
+[C] Conns      : 29 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 89 sockets sampled | rtt min 0.86 / mean 13.51 / max 476.00 ms | per-socket retrans total: 5
+[E] TCP health : retrans 0/9713 segs (0.000%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 26
+--- nethealth sample 7 (mc=16) ---
+=== nethealth: pid 1582187 (sa-perf), 5.02s window, 32 cores ===
+[A] Cores      : app uses 0.28 cores of 32 | 0.3 core-equiv busy system-wide | 0 core(s) >50%
+[B] Threads    : 37 total, 0 running | states {S=37 } | parked-on: futex_wait_queue(35) hrtimer_nanosleep(1) ep_poll(1) 
+[C] Conns      : 20 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 71 sockets sampled | rtt min 0.86 / mean 16.39 / max 476.00 ms | per-socket retrans total: 5
+[E] TCP health : retrans 0/9596 segs (0.000%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 0
+--- nethealth sample 8 (mc=16) ---
+=== nethealth: pid 1582187 (sa-perf), 5.02s window, 32 cores ===
+[A] Cores      : app uses 0.26 cores of 32 | 0.4 core-equiv busy system-wide | 0 core(s) >50%
+[B] Threads    : 37 total, 0 running | states {S=37 } | parked-on: futex_wait_queue(35) hrtimer_nanosleep(1) ep_poll(1) 
+[C] Conns      : 23 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 77 sockets sampled | rtt min 0.86 / mean 15.47 / max 476.00 ms | per-socket retrans total: 5
+[E] TCP health : retrans 0/9103 segs (0.000%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 11

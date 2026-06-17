@@ -1,0 +1,1 @@
+bin/sa-perf scan https://history.stellar.org/prd/core-live/core_live_001 -c 16 --max-concurrent 8 --low 63045000 --high 63046015 --report perf-results/maxconc/smoke_exist/report.json

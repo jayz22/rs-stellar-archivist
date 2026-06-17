@@ -1,0 +1,35 @@
+PERF wall_ms=10989 peak_rss_mb=122.6 files=6001 bytes=35939989 mb_per_s=3.3
+PERF_PHASE history_fetch,2520149.7,100.0,6001,35.9
+PERF_PHASE history_parse,838.4,0.0,6001,0.0
+PERF_PHASE bucket_stream,0.0,0.0,0,0.0
+PERF_PHASE xdr_decompress,0.0,0.0,0,0.0
+PERF_PHASE xdr_parse_ledger,0.0,0.0,0,0.0
+PERF_PHASE xdr_parse_tx,0.0,0.0,0,0.0
+PERF_PHASE xdr_parse_result,0.0,0.0,0,0.0
+PERF_PHASE xdr_parse_scp,0.0,0.0,0,0.0
+PERF_PHASE cross_file_verify,0.0,0.0,0,0.0
+PERF_PHASE chain_verify,0.0,0.0,0,0.0
+PERF_PHASE copy,0.0,0.0,0,0.0
+	Command being timed: "bin/sa-perf scan https://history.stellar.org/prd/core-live/core_live_001 -c 512 --max-concurrent 64 --low 62662015 --high 63046015 --report perf-results/maxconc/c_control/mc64_c512/report.json"
+	User time (seconds): 8.21
+	System time (seconds): 3.48
+	Percent of CPU this job got: 106%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:11.01
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 119700
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 28815
+	Voluntary context switches: 262041
+	Involuntary context switches: 49
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 56
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
