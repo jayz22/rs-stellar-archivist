@@ -734,21 +734,29 @@ git commit -m "perf(verify): offload sync parse to spawn_blocking (Strategy F)"
 **Files:** Create `scripts/perf/bench_strategies.sh` (on the base branch / each worktree —
 keep one canonical copy). Build each branch into a distinctly-named binary, then sweep.
 
-**Test matrix.** For each binary `B` in `{base, a, b, c, d, e, f}`:
+**Test matrix.** For each binary `B` in `{base, a, b, c, d, e, f}`. **No timeouts anywhere —
+every run goes to completion.** A small range is used only for the fast correctness gate;
+all *performance* numbers come from completing the 65,536-cp (1×L10) range.
 1. **Full test suite** (correctness floor): `cargo test --release` on the branch — must pass.
-2. **Correctness vs base:** completing `scan --verify` on a bounded range
-   (`SA_LOW_C..SA_HIGH_C`, default ~1000 cp), `--report`; must match base's
-   `(succeeded, failed, retries)` **and** the sorted broken-file set (`broken_sig`).
-3. **Core usage (verify, multi-L10):** `scan --verify` on `SA_LOW..SA_HIGH`
-   (default 3×L10 `50463103..63046015`) for `SA_WINDOW` s; capture RTM `busy_cores`
-   mean/max. **Partial-run sample** (we `kill -9` after the window) — good for *relative*
-   ranking, not a completion average; the bounded-range `verify_wall` is the completion
-   metric. Also capture **peak RSS** (A7: C and D buffer whole compressed files; their
-   memory cost is otherwise invisible) from the `perf-metrics` `timeseries.csv`.
-4. **No-verify regression (same multi-L10 range):** `scan` (no `--verify`) for `SA_WINDOW`
-   s; capture cores. Must not regress vs base.
-5. **Panic gate (A8):** any `task panicked` / `task cancelled` line in a run's stderr
-   fails that binary — a `JoinError` is a real bug, never a recorded hash mismatch.
+2. **Fast correctness gate vs base** — small range (`SA_LOW_C..SA_HIGH_C`, default **~2000
+   cp** `62918015..63046015`), completing `scan --verify --report`; must match base's
+   `(succeeded, failed, retries)` **and** the sorted broken-file set (`broken_sig`). Quick;
+   run it first so a broken strategy fails before the long perf run.
+3. **Performance — verify, 65,536-cp / 1×L10 range, RUN TO COMPLETION** (`SA_LOW..SA_HIGH`,
+   default `58851711..63046015`; **no timeout**). From the completing run capture:
+   `busy_cores` mean/max (RTM over the *whole* run = the definitive core-utilization, not a
+   sample), wall time, decompressed throughput (`mb_per_s`), and **peak RSS** — all from
+   `headline.csv` + RTM. `--report` also re-confirms `failed=0` on the full range.
+4. **No-verify (same 65,536-cp range), RUN TO COMPLETION:** `scan` (no `--verify`); capture
+   wall + cores. Must not regress vs base (I/O-bound — expect ~base).
+5. **Panic gate (A8):** any `task panicked`/`task cancelled` line fails that binary — a
+   `JoinError` is a real bug, never a recorded hash mismatch.
+
+> **Runtime note (the no-timeout trade-off):** completing 65,536 cp of *verify* is fast on
+> a saturating strategy (winner ~minutes) but **slow on a plateauing one** (base / C / D
+> may take ~hours at ~3 cores) — that's the cost of completion-based evidence. No-verify on
+> 65,536 cp completes in minutes (I/O-bound). Run the fast 2000-cp gate first; budget hours
+> for the full perf sweep across 7 binaries (run the slow ones overnight / once if needed).
 
 - [ ] **Step 1: Build every branch's instrumented binary**
 
@@ -769,34 +777,38 @@ done   # → bin/sa-base, sa-a … sa-f
 
 ```bash
 #!/usr/bin/env bash
-# Compare verify-scaling strategy binaries on correctness, core usage, verify (multi-L10),
-# and no-verify. Run with the miniserve local-sim up on :8088.
+# Compare verify-scaling strategy binaries. Fast correctness gate on a small range, then
+# performance on the 65,536-cp (1×L10) range RUN TO COMPLETION (no timeout). All runs
+# finish. miniserve local-sim up on :8088.
 set -o pipefail
 export PATH="$HOME/.cargo/bin:$PATH"
 ARCHIVE="${SA_ARCHIVE:-http://127.0.0.1:8088}"
 BINS="${SA_BINS:-base a b c d e f}"; PREFIX="${SA_PREFIX:-bin/sa-}"
-LOW="${SA_LOW:-50463103}"; HIGH="${SA_HIGH:-63046015}"         # multi-L10
-LOWC="${SA_LOW_C:-62982015}"; HIGHC="${SA_HIGH_C:-63046015}"   # bounded (correctness/wall)
-WINDOW="${SA_WINDOW:-60}"
+LOWC="${SA_LOW_C:-62918015}"; HIGHC="${SA_HIGH_C:-63046015}"   # ~2000 cp — FAST correctness gate
+LOW="${SA_LOW:-58851711}";  HIGH="${SA_HIGH:-63046015}"        # 65,536 cp = 1×L10 — PERF (to completion)
 OUT="${SA_OUT:-perf-results/maxconc/verifysim/strategies}"; mkdir -p "$OUT"
 cores_of(){ grep '^RTM' "$1" 2>/dev/null | python3 -c "import sys,re;b=[float(re.search(r'busy_cores=([\d.]+)',l).group(1)) for l in sys.stdin if 'busy_cores' in l];print(f'{sum(b)/len(b):.1f}/{max(b):.1f}' if b else 'n/a')"; }
-# A7: peak RSS from the perf-metrics timeseries.csv (cols: t_s,files_done,bytes_done,peak_rss_mb)
-rss_of(){ awk -F, 'NR>1 && $4>m{m=$4} END{printf "%.0f", m+0}' "$1/timeseries.csv" 2>/dev/null; }
+# headline.csv (written on completion): wall_ms,peak_rss_mb,files,bytes,mb_per_s → wall_s mbps rss_mb
+head_of(){ awk -F, 'NR==2{printf "%.0f %s %.0f", $1/1000, $5, $2}' "$1/headline.csv" 2>/dev/null; }
 summ(){ python3 -c "import json,sys;d=json.load(open(sys.argv[1]))['summary'];print(d['succeeded'],d['failed'],d['retries'])" "$1" 2>/dev/null; }
 sig(){ python3 -c "import json,sys,hashlib;d=json.load(open(sys.argv[1]));print(hashlib.sha256(repr(sorted((d.get('files') or {}).items())).encode()).hexdigest()[:16])" "$1" 2>/dev/null; }
 panicked(){ grep -qE 'task (panicked|cancelled)' "$@" 2>/dev/null && echo PANIC || echo ok; }
-printf '%-6s %-18s %-12s %-16s %-10s %-8s %-14s %-6s\n' bin correctness broken_sig verify_cores* verify_wall rss_mb noverify_cores panic
+printf '%-6s %-16s %-12s %-13s %-8s %-7s %-7s %-9s %-6s\n' bin correctness broken_sig verify_cores vwall_s vmbps rss_mb nverify_s panic
 for k in $BINS; do
   B="${PREFIX}${k}"
-  rep="$OUT/${k}.json"; t0=$(date +%s.%N)
+  # 2. fast correctness gate (small range)
+  rep="$OUT/${k}_c.json"
   "$B" scan "$ARCHIVE" -c 128 --max-concurrent 128 --verify --skip-optional --low "$LOWC" --high "$HIGHC" --report "$rep" >/dev/null 2>"$OUT/${k}_c.err"
-  vw=$(awk -v a=$t0 -v b=$(date +%s.%N) 'BEGIN{printf "%.1f",b-a}')
-  # verify multi-L10 window; SA_PERF_OUT captures timeseries.csv (peak RSS) even when killed
-  rm -rf "$OUT/${k}_v"; SA_PERF_OUT="$OUT/${k}_v" SA_RT_METRICS=1 "$B" scan "$ARCHIVE" -c 128 --max-concurrent 128 --verify --skip-optional --low "$LOW" --high "$HIGH" >/dev/null 2>"$OUT/${k}_v.rtm" & p=$!; sleep "$WINDOW"; kill -9 $p 2>/dev/null
-  SA_RT_METRICS=1 "$B" scan "$ARCHIVE" -c 128 --max-concurrent 128 --skip-optional --low "$LOW" --high "$HIGH" >/dev/null 2>"$OUT/${k}_n.rtm" & p=$!; sleep "$WINDOW"; kill -9 $p 2>/dev/null
-  printf '%-6s %-18s %-12s %-16s %-10s %-8s %-14s %-6s\n' "$k" "$(summ "$rep")" "$(sig "$rep")" "$(cores_of "$OUT/${k}_v.rtm")" "$vw" "$(rss_of "$OUT/${k}_v")" "$(cores_of "$OUT/${k}_n.rtm")" "$(panicked "$OUT/${k}_c.err" "$OUT/${k}_v.rtm" "$OUT/${k}_n.rtm")"
+  # 3. perf verify — RUN TO COMPLETION (no timeout); headline.csv has wall/mbps/rss, RTM has cores
+  vd="$OUT/${k}_v"; rm -rf "$vd"
+  SA_PERF_OUT="$vd" SA_RT_METRICS=1 "$B" scan "$ARCHIVE" -c 128 --max-concurrent 128 --verify --skip-optional --low "$LOW" --high "$HIGH" --report "$vd/report.json" >/dev/null 2>"$vd.rtm"
+  read -r vwall vmbps vrss < <(head_of "$vd")
+  # 4. no-verify — RUN TO COMPLETION
+  nd="$OUT/${k}_n"; rm -rf "$nd"; t0=$(date +%s.%N)
+  SA_PERF_OUT="$nd" SA_RT_METRICS=1 "$B" scan "$ARCHIVE" -c 128 --max-concurrent 128 --skip-optional --low "$LOW" --high "$HIGH" >/dev/null 2>"$nd.rtm"
+  nwall=$(awk -v a=$t0 -v b=$(date +%s.%N) 'BEGIN{printf "%.0f",b-a}')
+  printf '%-6s %-16s %-12s %-13s %-8s %-7s %-7s %-9s %-6s\n' "$k" "$(summ "$rep")" "$(sig "$rep")" "$(cores_of "$vd.rtm")" "${vwall:-?}" "${vmbps:-?}" "${vrss:-?}" "$nwall" "$(panicked "$OUT/${k}_c.err" "$vd.rtm" "$nd.rtm")"
 done
-# * verify_cores is a partial-run (kill -9 after $WINDOW) sample for ranking, not a completion average.
 ```
 
 - [ ] **Step 3: Run + record**
@@ -810,12 +822,16 @@ scripts/perf/bench_strategies.sh | tee perf-results/maxconc/verifysim/strategies
 
 - **Correctness (hard gate):** every binary's `cargo test` passes; `correctness` +
   `broken_sig` match `base`; and `panic == ok`. Any mismatch/PANIC → reject that strategy.
-- **Verify scaling:** rank by `verify_cores` mean + bounded `verify_wall`. Predicted
-  (§"six strategies" + amendment ranking): **A ≈ B** (full) saturate; **E ≈ F** (parse
-  offloaded, single-task feed remains) near-full unless feed-bound; **C ≈ D** (decode
-  offloaded, XDR parse+hash remains) plateau ~base. If C/D do *not* plateau, that refutes
-  the §9.3 "parse is heavy" model — a valuable finding.
-- **No-verify:** `noverify_cores` must match `base` within noise (no regression).
+- **Verify scaling:** rank by `verify_cores` mean (over the *whole* completing run) and
+  by `vwall_s` / `vmbps` (completion throughput on the identical 65,536-cp workload — cores
+  and throughput now describe the same run). Predicted (§"six strategies" + amendment
+  ranking): **A ≈ B** (full) saturate; **E ≈ F** (parse offloaded, single-task feed
+  remains) near-full unless feed-bound; **C ≈ D** (decode offloaded, XDR parse+hash
+  remains) plateau ~base. If C/D do *not* plateau, that refutes the §9.3 "parse is heavy"
+  model — a valuable finding.
+- **No-verify:** `nverify_s` (completion wall on the same 65,536-cp range) must match
+  `base` within noise — the spawn strategies must not regress the I/O-bound path (e.g.
+  prototype A measured 108.2 s vs 108.3 s on a 20k-cp existence scan).
 - **Memory:** compare `rss_mb` — C and D buffer whole compressed files (up to ~2.4 GB ×
   in-flight); A/B/E/F stream. A large `rss_mb` for C/D is the cost to weigh against their
   (predicted small) scaling benefit.
@@ -880,52 +896,66 @@ git add -f perf-results/maxconc/verifysim/strategies/ ; git commit -m "perf(veri
 
 **Why:** the benchmark (Task BENCH) ranks strategies at a fixed `-c=128` on 32 cores. The
 *capability* question is whether the winner actually **scales with cores** — the baseline
-was flat at ~3 cores regardless. Produce a strong-scaling curve for the winner (and the
-**base** as the flat reference) over the **same multi-L10 range** (196,608 cp), varying
-the number of physical cores.
+was flat at ~3 cores regardless. Produce a proper **strong-scaling curve**: run the
+**same fixed range to completion** at each core count, so throughput = work ÷ wall and
+speedup = wall(min cores) ÷ wall(N). **No time window** — runs go to finish.
+
+**Range sizing (important).** This is fixed-work-to-completion, so the range must be sized
+for the **lowest** core count, not the highest. The full 3×L10 range (196,608 cp)
+completes fast at 32 cores but would take **many hours at 1–2 cores**. Two knobs:
+- `SA_LOW/SA_HIGH` — pick a range whose **1-core** run finishes in a tolerable time
+  (still multi-era if possible). Default below is **1×L10 = 65,536 cp**
+  (`58851711..63046015`); raise/lower to taste.
+- `SA_NCORES` — to use the full 3×L10 range, **floor the sweep** (e.g. `8 16 24 32`) so no
+  run is multi-hour; the speedup baseline is then relative to the lowest N swept.
 
 **Files:** Create `scripts/perf/capability_graph.sh`; outputs CSV + a plot via the
 existing `scripts/perf/plot.py`.
 
-- [ ] **Step 1: Sweep cores with `taskset` (winner + base)**
+- [ ] **Step 1: Sweep cores with `taskset`, run to completion (winner + base)**
 
-Pin the process to N physical cores (the OS then caps decode parallelism at N, regardless
-of tokio's worker count); measure throughput over a fixed window. `SA_PERF_OUT`'s
-`timeseries.csv` gives decompressed `bytes_done` even on a killed run.
+Pin the process to N physical cores (the OS caps decode parallelism at N regardless of
+tokio's worker count); run to finish; read `wall_ms` + decompressed `mb_per_s` from the
+`perf-metrics` `headline.csv` (written on normal exit) and confirm `failed=0` from
+`--report`.
 
 ```bash
 #!/usr/bin/env bash
-# capability_graph.sh — throughput (+ cores) vs N physical cores, for the winner & base.
+# capability_graph.sh — strong scaling: run a FIXED range to completion at N physical
+# cores, for the winner & base. Throughput + speedup vs cores. No time window.
 set -o pipefail; export PATH="$HOME/.cargo/bin:$PATH"
 ARCHIVE="${SA_ARCHIVE:-http://127.0.0.1:8088}"
-LOW="${SA_LOW:-50463103}"; HIGH="${SA_HIGH:-63046015}"   # 196,608 cp = 3×L10
-WINDOW="${SA_WINDOW:-60}"; C="${SA_C:-128}"
+LOW="${SA_LOW:-58851711}"; HIGH="${SA_HIGH:-63046015}"   # default 1×L10 = 65,536 cp
+C="${SA_C:-128}"
 NCORES="${SA_NCORES:-1 2 4 8 16 24 32}"
 OUT="${SA_OUT:-perf-results/maxconc/verifysim/capability}"; mkdir -p "$OUT"
-echo "bin,cores,decompressed_mb_per_s,busy_cores_mean" > "$OUT/capability.csv"
+echo "bin,cores,wall_s,decompressed_mb_per_s,failed,peak_rss_mb" > "$OUT/capability.csv"
 for BIN in "${SA_WINNER:-bin/sa-a}" bin/sa-base; do
   for n in $NCORES; do
-    d="$OUT/$(basename "$BIN")_n${n}"; rm -rf "$d"
-    taskset -c "0-$((n-1))" env SA_PERF_OUT="$d" SA_RT_METRICS=1 "$BIN" scan "$ARCHIVE" \
+    d="$OUT/$(basename "$BIN")_n${n}"; rm -rf "$d"; mkdir -p "$d"
+    taskset -c "0-$((n-1))" env SA_PERF_OUT="$d" "$BIN" scan "$ARCHIVE" \
       -c "$C" --max-concurrent "$C" --verify --skip-optional --low "$LOW" --high "$HIGH" \
-      >/dev/null 2>"$d.rtm" & p=$!; sleep "$WINDOW"; kill -9 $p 2>/dev/null
-    mbps=$(awk -F, 'NR>1{b=$3} END{printf "%.0f", (b+0)/'"$WINDOW"'/1e6}' "$d/timeseries.csv" 2>/dev/null)
-    cores=$(grep '^RTM' "$d.rtm" 2>/dev/null | python3 -c "import sys,re;v=[float(re.search(r'busy_cores=([\d.]+)',l).group(1)) for l in sys.stdin if 'busy_cores' in l];print(f'{sum(v)/len(v):.1f}' if v else '0')")
-    echo "$(basename "$BIN"),$n,${mbps:-0},${cores:-0}" | tee -a "$OUT/capability.csv"
+      --report "$d/report.json" >/dev/null 2>"$d.err"     # runs to COMPLETION (no kill)
+    # headline.csv: wall_ms,peak_rss_mb,files,bytes,mb_per_s
+    read -r wall_ms rss _ _ mbps < <(awk -F, 'NR==2{print $1,$2,$3,$4,$5}' "$d/headline.csv" 2>/dev/null)
+    failed=$(python3 -c "import json;print(json.load(open('$d/report.json'))['summary']['failed'])" 2>/dev/null)
+    echo "$(basename "$BIN"),$n,$(awk -v w="${wall_ms:-0}" 'BEGIN{printf "%.1f",w/1000}'),${mbps:-0},${failed:-?},${rss:-0}" | tee -a "$OUT/capability.csv"
   done
 done
 ```
 
-- [ ] **Step 2: Plot throughput vs cores (winner vs base)**
+- [ ] **Step 2: Plot throughput + speedup vs cores (winner vs base)**
 
 ```bash
 chmod +x scripts/perf/capability_graph.sh
 SA_WINNER=bin/sa-<winner> scripts/perf/capability_graph.sh
-python3 scripts/perf/plot.py "$OUT/capability.csv"   # cores (x) vs decompressed_mb_per_s (y), one line per bin
+python3 scripts/perf/plot.py "$OUT/capability.csv"   # x=cores; y=decompressed_mb_per_s (one line per bin)
+# speedup = wall(min N) / wall(N), per bin — derive in the plot or a one-liner.
 ```
-Expected shape: **winner ≈ near-linear** up to where the workload's parallelism or the next
-limit (manager `Mutex` / the single-stream long-pole on a shared big bucket) caps it;
-**base ≈ flat ~3 cores' worth** at every N (the bottleneck this whole effort removes).
+Expected shape: **winner ≈ near-linear** throughput vs cores up to where the workload's
+parallelism or the next limit (manager `Mutex` / the single-stream long-pole on a shared
+big bucket) caps it; **base ≈ flat** (~3 cores' worth) at every N — the bottleneck this
+whole effort removes. Every row must show `failed=0`.
 
 - [ ] **Step 3: Commit**
 
