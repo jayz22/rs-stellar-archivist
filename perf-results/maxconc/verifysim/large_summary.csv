@@ -1,0 +1,3 @@
+range,concurrency_c,max_concurrent,cores_avg,cores_peak,rx_mbps_typ,rx_mbps_peak,note
+recent_3xL10,32,128,3.0,3.3,130,156,sustained low; design-serialized
+recent_3xL10,256,256,3.0,9.3,120,530,bursty; occasional overlap, not sustained; disk/cpu idle in low periods

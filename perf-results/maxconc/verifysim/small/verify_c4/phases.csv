@@ -1,0 +1,12 @@
+phase,total_ms,pct_of_phase_time,calls,mb,mb_per_s
+history_fetch,501.295,0.27,17,0.102,0.20
+history_parse,2.522,0.00,17,0.000,0.00
+bucket_stream,171767.513,91.93,171,19228.672,111.95
+xdr_decompress,10294.027,5.51,51,437.695,42.52
+xdr_parse_ledger,4.222,0.00,17,0.000,0.00
+xdr_parse_tx,3440.289,1.84,17,0.000,0.00
+xdr_parse_result,837.248,0.45,17,0.000,0.00
+xdr_parse_scp,0.000,0.00,0,0.000,0.00
+cross_file_verify,0.454,0.00,17,0.000,0.00
+chain_verify,0.001,0.00,1,0.000,0.00
+copy,0.000,0.00,0,0.000,0.00

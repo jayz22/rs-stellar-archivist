@@ -1,0 +1,10 @@
+=== bottleneck probe: pid 1624011 (sa-verify-async), 34 threads, 32 cores, 5.013s window ===
+[1] CPU        : sys 4.0% busy (~1.3/32 cores)  | proc 1.01 cores
+[2] Net BW     : RX 40.0 MB/s, TX 40.0 MB/s
+[3] Net reqs   : RX 727 pkt/s (avg 55074 B/pkt), TX 727 pkt/s
+[4] Conns      : 1 established(:443, this pid) | syn-sent 0 | time-wait(:443,all) 1
+[5] Disk BW    : write 0.0 MB/s, read 0.0 MB/s (nvme1n1 nvme2n1)
+[6] Disk IOPS  : 0 write/s, 0 read/s
+[7] Disk lat   : %util 0%, write await 0.00 ms
+[8] Threads    : states { S=33 R=1 } | blocked-on: futex_wait_queue(31) hrtimer_nanosleep(1) ep_poll(1) 0(1) 
+=== VERDICT: NETWORK-LATENCY / CONCURRENCY-bound (CPU idle, disk idle, BW < ceiling => waiting on round-trips or locks; check [3] pps, [4] conns, [8] futex) ===

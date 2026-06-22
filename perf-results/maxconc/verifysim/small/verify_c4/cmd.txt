@@ -1,0 +1,1 @@
+bin/sa-verify-async scan http://127.0.0.1:8088 -c 4 --max-concurrent 128 --verify --skip-optional --low 63045000 --high 63046015 --report perf-results/maxconc/verifysim/small/verify_c4/report.json

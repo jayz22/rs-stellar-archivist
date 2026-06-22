@@ -1,0 +1,1299 @@
+[2m2026-06-17T23:34:49.964594Z[0m [32m INFO[0m Starting scan of http://127.0.0.1:8088
+[2m2026-06-17T23:34:49.964634Z[0m [32m INFO[0m Scanning from ledger 63045000 onwards
+[2m2026-06-17T23:34:49.964641Z[0m [32m INFO[0m Scanning up to checkpoint 63046015
+[2m2026-06-17T23:34:49.966630Z[0m [32m INFO[0m Processing 17 checkpoints from 63044991 (0x03c1fd7f) to 63046015 (0x03c2017f)
+[2m2026-06-17T23:34:49.968518Z[0m [31mERROR[0m Failed to process scp/03/c1/fd/scp-03c1fd7f.xdr.gz: failed to read from scp/03/c1/fd/scp-03c1fd7f.xdr.gz: NotFound (permanent) at read, context: { uri: http://127.0.0.1:8088/scp/03/c1/fd/scp-03c1fd7f.xdr.gz, response: Parts { status: 404, version: HTTP/1.1, headers: {"content-length": "4626", "content-type": "text/html", "date": "Wed, 17 Jun 2026 23:34:49 GMT"} }, service: http, path: scp/03/c1/fd/scp-03c1fd7f.xdr.gz, range: 0- } => <!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light"><link rel="icon" type="image/svg+xml" href="/__miniserve_internal/favicon.svg"><link rel="stylesheet" href="/__miniserve_internal/style.css"><title>404 Not Found</title><script>
+                    // updates the color scheme by setting the theme data attribute
+                    // on body and saving the new theme to local storage
+                    function updateColorScheme(name) {
+                        if (name && name != "default") {
+                            localStorage.setItem('theme', name);
+                            document.body.setAttribute("data-theme", name)
+                        } else {
+                            localStorage.removeItem('theme');
+                            document.body.removeAttribute("data-theme")
+                        }
+                    }
+
+                    // read theme from local storage and apply it to body
+                    function loadColorScheme() {
+                        var name = localStorage.getItem('theme');
+                        updateColorScheme(name);
+                    }
+
+                    // load saved theme on page load
+                    addEventListener("load", loadColorScheme);
+                    // load saved theme when local storage is changed (synchronize between tabs)
+                    addEventListener("storage", loadColorScheme);
+
+                    // handle search form submission
+                    addEventListener("load", function() {
+                        const searchForm = document.getElementById('search');
+                        if (searchForm) {
+                            searchForm.addEventListener('submit', function(event) {
+                                event.preventDefault();
+                                const currentParams = new URLSearchParams(window.location.search);
+                                const searchInput = event.target.elements.search;
+                                currentParams.set('search', searchInput.value);
+                                window.location.search = currentParams.toString();
+                            });
+                        }
+                    });
+                </script><script>const API_ROUTE = '/__miniserve_internal/api';
+                    let dirSizeCache = {};
+
+                    // Query the directory size from the miniserve API
+                    function fetchDirSize(dir) {
+                        return fetch(API_ROUTE, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            },
+                            method: 'POST',
+                            body: JSON.stringify({
+                                DirSize: dir
+                            })
+                        }).then(resp => resp.ok ? resp.text() : "~")
+                    }
+
+                    function updateSizeCells() {
+                        const directoryCells = document.querySelectorAll('tr.entry-type-directory .size-cell');
+
+                        directoryCells.forEach(cell => {
+                            // Get the dir from the sibling anchor tag.
+                            const href = cell.parentNode.querySelector('a').href;
+                            const target = new URL(href).pathname;
+
+                            // First check our local cache
+                            if (target in dirSizeCache) {
+                                cell.dataset.size = dirSizeCache[target];
+                            } else {
+                                fetchDirSize(target).then(dir_size => {
+                                    cell.dataset.size = dir_size;
+                                    dirSizeCache[target] = dir_size;
+                                })
+                                .catch(error => console.error("Error fetching dir size:", error));
+                            }
+                        })
+                    }
+                    setInterval(updateSizeCells, 1000);
+                </script></head><body><div class="error"><p>404 Not Found</p><p>Route /scp/03/c1/fd/scp-03c1fd7f.xdr.gz could not be found</p><div class="error-nav"><a class="error-back" href="/">Go back to file listing</a></div><p class="footer"><div class="version"><a href="https://github.com/svenstaro/miniserve">miniserve</a>/0.35.0</div></p></div></body></html>
+[2m2026-06-17T23:34:49.995311Z[0m [31mERROR[0m Failed to process scp/03/c1/fd/scp-03c1fdbf.xdr.gz: failed to read from scp/03/c1/fd/scp-03c1fdbf.xdr.gz: NotFound (permanent) at read, context: { uri: http://127.0.0.1:8088/scp/03/c1/fd/scp-03c1fdbf.xdr.gz, response: Parts { status: 404, version: HTTP/1.1, headers: {"content-length": "4626", "content-type": "text/html", "date": "Wed, 17 Jun 2026 23:34:49 GMT"} }, service: http, path: scp/03/c1/fd/scp-03c1fdbf.xdr.gz, range: 0- } => <!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light"><link rel="icon" type="image/svg+xml" href="/__miniserve_internal/favicon.svg"><link rel="stylesheet" href="/__miniserve_internal/style.css"><title>404 Not Found</title><script>
+                    // updates the color scheme by setting the theme data attribute
+                    // on body and saving the new theme to local storage
+                    function updateColorScheme(name) {
+                        if (name && name != "default") {
+                            localStorage.setItem('theme', name);
+                            document.body.setAttribute("data-theme", name)
+                        } else {
+                            localStorage.removeItem('theme');
+                            document.body.removeAttribute("data-theme")
+                        }
+                    }
+
+                    // read theme from local storage and apply it to body
+                    function loadColorScheme() {
+                        var name = localStorage.getItem('theme');
+                        updateColorScheme(name);
+                    }
+
+                    // load saved theme on page load
+                    addEventListener("load", loadColorScheme);
+                    // load saved theme when local storage is changed (synchronize between tabs)
+                    addEventListener("storage", loadColorScheme);
+
+                    // handle search form submission
+                    addEventListener("load", function() {
+                        const searchForm = document.getElementById('search');
+                        if (searchForm) {
+                            searchForm.addEventListener('submit', function(event) {
+                                event.preventDefault();
+                                const currentParams = new URLSearchParams(window.location.search);
+                                const searchInput = event.target.elements.search;
+                                currentParams.set('search', searchInput.value);
+                                window.location.search = currentParams.toString();
+                            });
+                        }
+                    });
+                </script><script>const API_ROUTE = '/__miniserve_internal/api';
+                    let dirSizeCache = {};
+
+                    // Query the directory size from the miniserve API
+                    function fetchDirSize(dir) {
+                        return fetch(API_ROUTE, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            },
+                            method: 'POST',
+                            body: JSON.stringify({
+                                DirSize: dir
+                            })
+                        }).then(resp => resp.ok ? resp.text() : "~")
+                    }
+
+                    function updateSizeCells() {
+                        const directoryCells = document.querySelectorAll('tr.entry-type-directory .size-cell');
+
+                        directoryCells.forEach(cell => {
+                            // Get the dir from the sibling anchor tag.
+                            const href = cell.parentNode.querySelector('a').href;
+                            const target = new URL(href).pathname;
+
+                            // First check our local cache
+                            if (target in dirSizeCache) {
+                                cell.dataset.size = dirSizeCache[target];
+                            } else {
+                                fetchDirSize(target).then(dir_size => {
+                                    cell.dataset.size = dir_size;
+                                    dirSizeCache[target] = dir_size;
+                                })
+                                .catch(error => console.error("Error fetching dir size:", error));
+                            }
+                        })
+                    }
+                    setInterval(updateSizeCells, 1000);
+                </script></head><body><div class="error"><p>404 Not Found</p><p>Route /scp/03/c1/fd/scp-03c1fdbf.xdr.gz could not be found</p><div class="error-nav"><a class="error-back" href="/">Go back to file listing</a></div><p class="footer"><div class="version"><a href="https://github.com/svenstaro/miniserve">miniserve</a>/0.35.0</div></p></div></body></html>
+[2m2026-06-17T23:34:49.997804Z[0m [31mERROR[0m Failed to process scp/03/c1/fd/scp-03c1fdff.xdr.gz: failed to read from scp/03/c1/fd/scp-03c1fdff.xdr.gz: NotFound (permanent) at read, context: { uri: http://127.0.0.1:8088/scp/03/c1/fd/scp-03c1fdff.xdr.gz, response: Parts { status: 404, version: HTTP/1.1, headers: {"content-length": "4626", "content-type": "text/html", "date": "Wed, 17 Jun 2026 23:34:49 GMT"} }, service: http, path: scp/03/c1/fd/scp-03c1fdff.xdr.gz, range: 0- } => <!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light"><link rel="icon" type="image/svg+xml" href="/__miniserve_internal/favicon.svg"><link rel="stylesheet" href="/__miniserve_internal/style.css"><title>404 Not Found</title><script>
+                    // updates the color scheme by setting the theme data attribute
+                    // on body and saving the new theme to local storage
+                    function updateColorScheme(name) {
+                        if (name && name != "default") {
+                            localStorage.setItem('theme', name);
+                            document.body.setAttribute("data-theme", name)
+                        } else {
+                            localStorage.removeItem('theme');
+                            document.body.removeAttribute("data-theme")
+                        }
+                    }
+
+                    // read theme from local storage and apply it to body
+                    function loadColorScheme() {
+                        var name = localStorage.getItem('theme');
+                        updateColorScheme(name);
+                    }
+
+                    // load saved theme on page load
+                    addEventListener("load", loadColorScheme);
+                    // load saved theme when local storage is changed (synchronize between tabs)
+                    addEventListener("storage", loadColorScheme);
+
+                    // handle search form submission
+                    addEventListener("load", function() {
+                        const searchForm = document.getElementById('search');
+                        if (searchForm) {
+                            searchForm.addEventListener('submit', function(event) {
+                                event.preventDefault();
+                                const currentParams = new URLSearchParams(window.location.search);
+                                const searchInput = event.target.elements.search;
+                                currentParams.set('search', searchInput.value);
+                                window.location.search = currentParams.toString();
+                            });
+                        }
+                    });
+                </script><script>const API_ROUTE = '/__miniserve_internal/api';
+                    let dirSizeCache = {};
+
+                    // Query the directory size from the miniserve API
+                    function fetchDirSize(dir) {
+                        return fetch(API_ROUTE, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            },
+                            method: 'POST',
+                            body: JSON.stringify({
+                                DirSize: dir
+                            })
+                        }).then(resp => resp.ok ? resp.text() : "~")
+                    }
+
+                    function updateSizeCells() {
+                        const directoryCells = document.querySelectorAll('tr.entry-type-directory .size-cell');
+
+                        directoryCells.forEach(cell => {
+                            // Get the dir from the sibling anchor tag.
+                            const href = cell.parentNode.querySelector('a').href;
+                            const target = new URL(href).pathname;
+
+                            // First check our local cache
+                            if (target in dirSizeCache) {
+                                cell.dataset.size = dirSizeCache[target];
+                            } else {
+                                fetchDirSize(target).then(dir_size => {
+                                    cell.dataset.size = dir_size;
+                                    dirSizeCache[target] = dir_size;
+                                })
+                                .catch(error => console.error("Error fetching dir size:", error));
+                            }
+                        })
+                    }
+                    setInterval(updateSizeCells, 1000);
+                </script></head><body><div class="error"><p>404 Not Found</p><p>Route /scp/03/c1/fd/scp-03c1fdff.xdr.gz could not be found</p><div class="error-nav"><a class="error-back" href="/">Go back to file listing</a></div><p class="footer"><div class="version"><a href="https://github.com/svenstaro/miniserve">miniserve</a>/0.35.0</div></p></div></body></html>
+[2m2026-06-17T23:34:50.011841Z[0m [31mERROR[0m Failed to process scp/03/c1/fe/scp-03c1fe3f.xdr.gz: failed to read from scp/03/c1/fe/scp-03c1fe3f.xdr.gz: NotFound (permanent) at read, context: { uri: http://127.0.0.1:8088/scp/03/c1/fe/scp-03c1fe3f.xdr.gz, response: Parts { status: 404, version: HTTP/1.1, headers: {"content-length": "4626", "content-type": "text/html", "date": "Wed, 17 Jun 2026 23:34:49 GMT"} }, service: http, path: scp/03/c1/fe/scp-03c1fe3f.xdr.gz, range: 0- } => <!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light"><link rel="icon" type="image/svg+xml" href="/__miniserve_internal/favicon.svg"><link rel="stylesheet" href="/__miniserve_internal/style.css"><title>404 Not Found</title><script>
+                    // updates the color scheme by setting the theme data attribute
+                    // on body and saving the new theme to local storage
+                    function updateColorScheme(name) {
+                        if (name && name != "default") {
+                            localStorage.setItem('theme', name);
+                            document.body.setAttribute("data-theme", name)
+                        } else {
+                            localStorage.removeItem('theme');
+                            document.body.removeAttribute("data-theme")
+                        }
+                    }
+
+                    // read theme from local storage and apply it to body
+                    function loadColorScheme() {
+                        var name = localStorage.getItem('theme');
+                        updateColorScheme(name);
+                    }
+
+                    // load saved theme on page load
+                    addEventListener("load", loadColorScheme);
+                    // load saved theme when local storage is changed (synchronize between tabs)
+                    addEventListener("storage", loadColorScheme);
+
+                    // handle search form submission
+                    addEventListener("load", function() {
+                        const searchForm = document.getElementById('search');
+                        if (searchForm) {
+                            searchForm.addEventListener('submit', function(event) {
+                                event.preventDefault();
+                                const currentParams = new URLSearchParams(window.location.search);
+                                const searchInput = event.target.elements.search;
+                                currentParams.set('search', searchInput.value);
+                                window.location.search = currentParams.toString();
+                            });
+                        }
+                    });
+                </script><script>const API_ROUTE = '/__miniserve_internal/api';
+                    let dirSizeCache = {};
+
+                    // Query the directory size from the miniserve API
+                    function fetchDirSize(dir) {
+                        return fetch(API_ROUTE, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            },
+                            method: 'POST',
+                            body: JSON.stringify({
+                                DirSize: dir
+                            })
+                        }).then(resp => resp.ok ? resp.text() : "~")
+                    }
+
+                    function updateSizeCells() {
+                        const directoryCells = document.querySelectorAll('tr.entry-type-directory .size-cell');
+
+                        directoryCells.forEach(cell => {
+                            // Get the dir from the sibling anchor tag.
+                            const href = cell.parentNode.querySelector('a').href;
+                            const target = new URL(href).pathname;
+
+                            // First check our local cache
+                            if (target in dirSizeCache) {
+                                cell.dataset.size = dirSizeCache[target];
+                            } else {
+                                fetchDirSize(target).then(dir_size => {
+                                    cell.dataset.size = dir_size;
+                                    dirSizeCache[target] = dir_size;
+                                })
+                                .catch(error => console.error("Error fetching dir size:", error));
+                            }
+                        })
+                    }
+                    setInterval(updateSizeCells, 1000);
+                </script></head><body><div class="error"><p>404 Not Found</p><p>Route /scp/03/c1/fe/scp-03c1fe3f.xdr.gz could not be found</p><div class="error-nav"><a class="error-back" href="/">Go back to file listing</a></div><p class="footer"><div class="version"><a href="https://github.com/svenstaro/miniserve">miniserve</a>/0.35.0</div></p></div></body></html>
+[2m2026-06-17T23:34:50.129693Z[0m [31mERROR[0m Failed to process scp/03/c1/ff/scp-03c1ff3f.xdr.gz: failed to read from scp/03/c1/ff/scp-03c1ff3f.xdr.gz: NotFound (permanent) at read, context: { uri: http://127.0.0.1:8088/scp/03/c1/ff/scp-03c1ff3f.xdr.gz, response: Parts { status: 404, version: HTTP/1.1, headers: {"content-length": "4626", "content-type": "text/html", "date": "Wed, 17 Jun 2026 23:34:49 GMT"} }, service: http, path: scp/03/c1/ff/scp-03c1ff3f.xdr.gz, range: 0- } => <!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light"><link rel="icon" type="image/svg+xml" href="/__miniserve_internal/favicon.svg"><link rel="stylesheet" href="/__miniserve_internal/style.css"><title>404 Not Found</title><script>
+                    // updates the color scheme by setting the theme data attribute
+                    // on body and saving the new theme to local storage
+                    function updateColorScheme(name) {
+                        if (name && name != "default") {
+                            localStorage.setItem('theme', name);
+                            document.body.setAttribute("data-theme", name)
+                        } else {
+                            localStorage.removeItem('theme');
+                            document.body.removeAttribute("data-theme")
+                        }
+                    }
+
+                    // read theme from local storage and apply it to body
+                    function loadColorScheme() {
+                        var name = localStorage.getItem('theme');
+                        updateColorScheme(name);
+                    }
+
+                    // load saved theme on page load
+                    addEventListener("load", loadColorScheme);
+                    // load saved theme when local storage is changed (synchronize between tabs)
+                    addEventListener("storage", loadColorScheme);
+
+                    // handle search form submission
+                    addEventListener("load", function() {
+                        const searchForm = document.getElementById('search');
+                        if (searchForm) {
+                            searchForm.addEventListener('submit', function(event) {
+                                event.preventDefault();
+                                const currentParams = new URLSearchParams(window.location.search);
+                                const searchInput = event.target.elements.search;
+                                currentParams.set('search', searchInput.value);
+                                window.location.search = currentParams.toString();
+                            });
+                        }
+                    });
+                </script><script>const API_ROUTE = '/__miniserve_internal/api';
+                    let dirSizeCache = {};
+
+                    // Query the directory size from the miniserve API
+                    function fetchDirSize(dir) {
+                        return fetch(API_ROUTE, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            },
+                            method: 'POST',
+                            body: JSON.stringify({
+                                DirSize: dir
+                            })
+                        }).then(resp => resp.ok ? resp.text() : "~")
+                    }
+
+                    function updateSizeCells() {
+                        const directoryCells = document.querySelectorAll('tr.entry-type-directory .size-cell');
+
+                        directoryCells.forEach(cell => {
+                            // Get the dir from the sibling anchor tag.
+                            const href = cell.parentNode.querySelector('a').href;
+                            const target = new URL(href).pathname;
+
+                            // First check our local cache
+                            if (target in dirSizeCache) {
+                                cell.dataset.size = dirSizeCache[target];
+                            } else {
+                                fetchDirSize(target).then(dir_size => {
+                                    cell.dataset.size = dir_size;
+                                    dirSizeCache[target] = dir_size;
+                                })
+                                .catch(error => console.error("Error fetching dir size:", error));
+                            }
+                        })
+                    }
+                    setInterval(updateSizeCells, 1000);
+                </script></head><body><div class="error"><p>404 Not Found</p><p>Route /scp/03/c1/ff/scp-03c1ff3f.xdr.gz could not be found</p><div class="error-nav"><a class="error-back" href="/">Go back to file listing</a></div><p class="footer"><div class="version"><a href="https://github.com/svenstaro/miniserve">miniserve</a>/0.35.0</div></p></div></body></html>
+[2m2026-06-17T23:34:50.130364Z[0m [31mERROR[0m Failed to process scp/03/c1/fe/scp-03c1feff.xdr.gz: failed to read from scp/03/c1/fe/scp-03c1feff.xdr.gz: NotFound (permanent) at read, context: { uri: http://127.0.0.1:8088/scp/03/c1/fe/scp-03c1feff.xdr.gz, response: Parts { status: 404, version: HTTP/1.1, headers: {"content-length": "4626", "content-type": "text/html", "date": "Wed, 17 Jun 2026 23:34:49 GMT"} }, service: http, path: scp/03/c1/fe/scp-03c1feff.xdr.gz, range: 0- } => <!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light"><link rel="icon" type="image/svg+xml" href="/__miniserve_internal/favicon.svg"><link rel="stylesheet" href="/__miniserve_internal/style.css"><title>404 Not Found</title><script>
+                    // updates the color scheme by setting the theme data attribute
+                    // on body and saving the new theme to local storage
+                    function updateColorScheme(name) {
+                        if (name && name != "default") {
+                            localStorage.setItem('theme', name);
+                            document.body.setAttribute("data-theme", name)
+                        } else {
+                            localStorage.removeItem('theme');
+                            document.body.removeAttribute("data-theme")
+                        }
+                    }
+
+                    // read theme from local storage and apply it to body
+                    function loadColorScheme() {
+                        var name = localStorage.getItem('theme');
+                        updateColorScheme(name);
+                    }
+
+                    // load saved theme on page load
+                    addEventListener("load", loadColorScheme);
+                    // load saved theme when local storage is changed (synchronize between tabs)
+                    addEventListener("storage", loadColorScheme);
+
+                    // handle search form submission
+                    addEventListener("load", function() {
+                        const searchForm = document.getElementById('search');
+                        if (searchForm) {
+                            searchForm.addEventListener('submit', function(event) {
+                                event.preventDefault();
+                                const currentParams = new URLSearchParams(window.location.search);
+                                const searchInput = event.target.elements.search;
+                                currentParams.set('search', searchInput.value);
+                                window.location.search = currentParams.toString();
+                            });
+                        }
+                    });
+                </script><script>const API_ROUTE = '/__miniserve_internal/api';
+                    let dirSizeCache = {};
+
+                    // Query the directory size from the miniserve API
+                    function fetchDirSize(dir) {
+                        return fetch(API_ROUTE, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            },
+                            method: 'POST',
+                            body: JSON.stringify({
+                                DirSize: dir
+                            })
+                        }).then(resp => resp.ok ? resp.text() : "~")
+                    }
+
+                    function updateSizeCells() {
+                        const directoryCells = document.querySelectorAll('tr.entry-type-directory .size-cell');
+
+                        directoryCells.forEach(cell => {
+                            // Get the dir from the sibling anchor tag.
+                            const href = cell.parentNode.querySelector('a').href;
+                            const target = new URL(href).pathname;
+
+                            // First check our local cache
+                            if (target in dirSizeCache) {
+                                cell.dataset.size = dirSizeCache[target];
+                            } else {
+                                fetchDirSize(target).then(dir_size => {
+                                    cell.dataset.size = dir_size;
+                                    dirSizeCache[target] = dir_size;
+                                })
+                                .catch(error => console.error("Error fetching dir size:", error));
+                            }
+                        })
+                    }
+                    setInterval(updateSizeCells, 1000);
+                </script></head><body><div class="error"><p>404 Not Found</p><p>Route /scp/03/c1/fe/scp-03c1feff.xdr.gz could not be found</p><div class="error-nav"><a class="error-back" href="/">Go back to file listing</a></div><p class="footer"><div class="version"><a href="https://github.com/svenstaro/miniserve">miniserve</a>/0.35.0</div></p></div></body></html>
+[2m2026-06-17T23:34:50.130981Z[0m [31mERROR[0m Failed to process scp/03/c1/fe/scp-03c1fe7f.xdr.gz: failed to read from scp/03/c1/fe/scp-03c1fe7f.xdr.gz: NotFound (permanent) at read, context: { uri: http://127.0.0.1:8088/scp/03/c1/fe/scp-03c1fe7f.xdr.gz, response: Parts { status: 404, version: HTTP/1.1, headers: {"content-length": "4626", "content-type": "text/html", "date": "Wed, 17 Jun 2026 23:34:49 GMT"} }, service: http, path: scp/03/c1/fe/scp-03c1fe7f.xdr.gz, range: 0- } => <!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light"><link rel="icon" type="image/svg+xml" href="/__miniserve_internal/favicon.svg"><link rel="stylesheet" href="/__miniserve_internal/style.css"><title>404 Not Found</title><script>
+                    // updates the color scheme by setting the theme data attribute
+                    // on body and saving the new theme to local storage
+                    function updateColorScheme(name) {
+                        if (name && name != "default") {
+                            localStorage.setItem('theme', name);
+                            document.body.setAttribute("data-theme", name)
+                        } else {
+                            localStorage.removeItem('theme');
+                            document.body.removeAttribute("data-theme")
+                        }
+                    }
+
+                    // read theme from local storage and apply it to body
+                    function loadColorScheme() {
+                        var name = localStorage.getItem('theme');
+                        updateColorScheme(name);
+                    }
+
+                    // load saved theme on page load
+                    addEventListener("load", loadColorScheme);
+                    // load saved theme when local storage is changed (synchronize between tabs)
+                    addEventListener("storage", loadColorScheme);
+
+                    // handle search form submission
+                    addEventListener("load", function() {
+                        const searchForm = document.getElementById('search');
+                        if (searchForm) {
+                            searchForm.addEventListener('submit', function(event) {
+                                event.preventDefault();
+                                const currentParams = new URLSearchParams(window.location.search);
+                                const searchInput = event.target.elements.search;
+                                currentParams.set('search', searchInput.value);
+                                window.location.search = currentParams.toString();
+                            });
+                        }
+                    });
+                </script><script>const API_ROUTE = '/__miniserve_internal/api';
+                    let dirSizeCache = {};
+
+                    // Query the directory size from the miniserve API
+                    function fetchDirSize(dir) {
+                        return fetch(API_ROUTE, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            },
+                            method: 'POST',
+                            body: JSON.stringify({
+                                DirSize: dir
+                            })
+                        }).then(resp => resp.ok ? resp.text() : "~")
+                    }
+
+                    function updateSizeCells() {
+                        const directoryCells = document.querySelectorAll('tr.entry-type-directory .size-cell');
+
+                        directoryCells.forEach(cell => {
+                            // Get the dir from the sibling anchor tag.
+                            const href = cell.parentNode.querySelector('a').href;
+                            const target = new URL(href).pathname;
+
+                            // First check our local cache
+                            if (target in dirSizeCache) {
+                                cell.dataset.size = dirSizeCache[target];
+                            } else {
+                                fetchDirSize(target).then(dir_size => {
+                                    cell.dataset.size = dir_size;
+                                    dirSizeCache[target] = dir_size;
+                                })
+                                .catch(error => console.error("Error fetching dir size:", error));
+                            }
+                        })
+                    }
+                    setInterval(updateSizeCells, 1000);
+                </script></head><body><div class="error"><p>404 Not Found</p><p>Route /scp/03/c1/fe/scp-03c1fe7f.xdr.gz could not be found</p><div class="error-nav"><a class="error-back" href="/">Go back to file listing</a></div><p class="footer"><div class="version"><a href="https://github.com/svenstaro/miniserve">miniserve</a>/0.35.0</div></p></div></body></html>
+[2m2026-06-17T23:34:50.196847Z[0m [31mERROR[0m Failed to process scp/03/c1/fe/scp-03c1febf.xdr.gz: failed to read from scp/03/c1/fe/scp-03c1febf.xdr.gz: NotFound (permanent) at read, context: { uri: http://127.0.0.1:8088/scp/03/c1/fe/scp-03c1febf.xdr.gz, response: Parts { status: 404, version: HTTP/1.1, headers: {"content-length": "4626", "content-type": "text/html", "date": "Wed, 17 Jun 2026 23:34:50 GMT"} }, service: http, path: scp/03/c1/fe/scp-03c1febf.xdr.gz, range: 0- } => <!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light"><link rel="icon" type="image/svg+xml" href="/__miniserve_internal/favicon.svg"><link rel="stylesheet" href="/__miniserve_internal/style.css"><title>404 Not Found</title><script>
+                    // updates the color scheme by setting the theme data attribute
+                    // on body and saving the new theme to local storage
+                    function updateColorScheme(name) {
+                        if (name && name != "default") {
+                            localStorage.setItem('theme', name);
+                            document.body.setAttribute("data-theme", name)
+                        } else {
+                            localStorage.removeItem('theme');
+                            document.body.removeAttribute("data-theme")
+                        }
+                    }
+
+                    // read theme from local storage and apply it to body
+                    function loadColorScheme() {
+                        var name = localStorage.getItem('theme');
+                        updateColorScheme(name);
+                    }
+
+                    // load saved theme on page load
+                    addEventListener("load", loadColorScheme);
+                    // load saved theme when local storage is changed (synchronize between tabs)
+                    addEventListener("storage", loadColorScheme);
+
+                    // handle search form submission
+                    addEventListener("load", function() {
+                        const searchForm = document.getElementById('search');
+                        if (searchForm) {
+                            searchForm.addEventListener('submit', function(event) {
+                                event.preventDefault();
+                                const currentParams = new URLSearchParams(window.location.search);
+                                const searchInput = event.target.elements.search;
+                                currentParams.set('search', searchInput.value);
+                                window.location.search = currentParams.toString();
+                            });
+                        }
+                    });
+                </script><script>const API_ROUTE = '/__miniserve_internal/api';
+                    let dirSizeCache = {};
+
+                    // Query the directory size from the miniserve API
+                    function fetchDirSize(dir) {
+                        return fetch(API_ROUTE, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            },
+                            method: 'POST',
+                            body: JSON.stringify({
+                                DirSize: dir
+                            })
+                        }).then(resp => resp.ok ? resp.text() : "~")
+                    }
+
+                    function updateSizeCells() {
+                        const directoryCells = document.querySelectorAll('tr.entry-type-directory .size-cell');
+
+                        directoryCells.forEach(cell => {
+                            // Get the dir from the sibling anchor tag.
+                            const href = cell.parentNode.querySelector('a').href;
+                            const target = new URL(href).pathname;
+
+                            // First check our local cache
+                            if (target in dirSizeCache) {
+                                cell.dataset.size = dirSizeCache[target];
+                            } else {
+                                fetchDirSize(target).then(dir_size => {
+                                    cell.dataset.size = dir_size;
+                                    dirSizeCache[target] = dir_size;
+                                })
+                                .catch(error => console.error("Error fetching dir size:", error));
+                            }
+                        })
+                    }
+                    setInterval(updateSizeCells, 1000);
+                </script></head><body><div class="error"><p>404 Not Found</p><p>Route /scp/03/c1/fe/scp-03c1febf.xdr.gz could not be found</p><div class="error-nav"><a class="error-back" href="/">Go back to file listing</a></div><p class="footer"><div class="version"><a href="https://github.com/svenstaro/miniserve">miniserve</a>/0.35.0</div></p></div></body></html>
+[2m2026-06-17T23:34:51.353239Z[0m [31mERROR[0m Failed to process scp/03/c1/ff/scp-03c1ff7f.xdr.gz: failed to read from scp/03/c1/ff/scp-03c1ff7f.xdr.gz: NotFound (permanent) at read, context: { uri: http://127.0.0.1:8088/scp/03/c1/ff/scp-03c1ff7f.xdr.gz, response: Parts { status: 404, version: HTTP/1.1, headers: {"content-length": "4626", "content-type": "text/html", "date": "Wed, 17 Jun 2026 23:34:51 GMT"} }, service: http, path: scp/03/c1/ff/scp-03c1ff7f.xdr.gz, range: 0- } => <!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light"><link rel="icon" type="image/svg+xml" href="/__miniserve_internal/favicon.svg"><link rel="stylesheet" href="/__miniserve_internal/style.css"><title>404 Not Found</title><script>
+                    // updates the color scheme by setting the theme data attribute
+                    // on body and saving the new theme to local storage
+                    function updateColorScheme(name) {
+                        if (name && name != "default") {
+                            localStorage.setItem('theme', name);
+                            document.body.setAttribute("data-theme", name)
+                        } else {
+                            localStorage.removeItem('theme');
+                            document.body.removeAttribute("data-theme")
+                        }
+                    }
+
+                    // read theme from local storage and apply it to body
+                    function loadColorScheme() {
+                        var name = localStorage.getItem('theme');
+                        updateColorScheme(name);
+                    }
+
+                    // load saved theme on page load
+                    addEventListener("load", loadColorScheme);
+                    // load saved theme when local storage is changed (synchronize between tabs)
+                    addEventListener("storage", loadColorScheme);
+
+                    // handle search form submission
+                    addEventListener("load", function() {
+                        const searchForm = document.getElementById('search');
+                        if (searchForm) {
+                            searchForm.addEventListener('submit', function(event) {
+                                event.preventDefault();
+                                const currentParams = new URLSearchParams(window.location.search);
+                                const searchInput = event.target.elements.search;
+                                currentParams.set('search', searchInput.value);
+                                window.location.search = currentParams.toString();
+                            });
+                        }
+                    });
+                </script><script>const API_ROUTE = '/__miniserve_internal/api';
+                    let dirSizeCache = {};
+
+                    // Query the directory size from the miniserve API
+                    function fetchDirSize(dir) {
+                        return fetch(API_ROUTE, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            },
+                            method: 'POST',
+                            body: JSON.stringify({
+                                DirSize: dir
+                            })
+                        }).then(resp => resp.ok ? resp.text() : "~")
+                    }
+
+                    function updateSizeCells() {
+                        const directoryCells = document.querySelectorAll('tr.entry-type-directory .size-cell');
+
+                        directoryCells.forEach(cell => {
+                            // Get the dir from the sibling anchor tag.
+                            const href = cell.parentNode.querySelector('a').href;
+                            const target = new URL(href).pathname;
+
+                            // First check our local cache
+                            if (target in dirSizeCache) {
+                                cell.dataset.size = dirSizeCache[target];
+                            } else {
+                                fetchDirSize(target).then(dir_size => {
+                                    cell.dataset.size = dir_size;
+                                    dirSizeCache[target] = dir_size;
+                                })
+                                .catch(error => console.error("Error fetching dir size:", error));
+                            }
+                        })
+                    }
+                    setInterval(updateSizeCells, 1000);
+                </script></head><body><div class="error"><p>404 Not Found</p><p>Route /scp/03/c1/ff/scp-03c1ff7f.xdr.gz could not be found</p><div class="error-nav"><a class="error-back" href="/">Go back to file listing</a></div><p class="footer"><div class="version"><a href="https://github.com/svenstaro/miniserve">miniserve</a>/0.35.0</div></p></div></body></html>
+[2m2026-06-17T23:34:52.274938Z[0m [31mERROR[0m Failed to process scp/03/c1/ff/scp-03c1ffbf.xdr.gz: failed to read from scp/03/c1/ff/scp-03c1ffbf.xdr.gz: NotFound (permanent) at read, context: { uri: http://127.0.0.1:8088/scp/03/c1/ff/scp-03c1ffbf.xdr.gz, response: Parts { status: 404, version: HTTP/1.1, headers: {"content-length": "4626", "content-type": "text/html", "date": "Wed, 17 Jun 2026 23:34:52 GMT"} }, service: http, path: scp/03/c1/ff/scp-03c1ffbf.xdr.gz, range: 0- } => <!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light"><link rel="icon" type="image/svg+xml" href="/__miniserve_internal/favicon.svg"><link rel="stylesheet" href="/__miniserve_internal/style.css"><title>404 Not Found</title><script>
+                    // updates the color scheme by setting the theme data attribute
+                    // on body and saving the new theme to local storage
+                    function updateColorScheme(name) {
+                        if (name && name != "default") {
+                            localStorage.setItem('theme', name);
+                            document.body.setAttribute("data-theme", name)
+                        } else {
+                            localStorage.removeItem('theme');
+                            document.body.removeAttribute("data-theme")
+                        }
+                    }
+
+                    // read theme from local storage and apply it to body
+                    function loadColorScheme() {
+                        var name = localStorage.getItem('theme');
+                        updateColorScheme(name);
+                    }
+
+                    // load saved theme on page load
+                    addEventListener("load", loadColorScheme);
+                    // load saved theme when local storage is changed (synchronize between tabs)
+                    addEventListener("storage", loadColorScheme);
+
+                    // handle search form submission
+                    addEventListener("load", function() {
+                        const searchForm = document.getElementById('search');
+                        if (searchForm) {
+                            searchForm.addEventListener('submit', function(event) {
+                                event.preventDefault();
+                                const currentParams = new URLSearchParams(window.location.search);
+                                const searchInput = event.target.elements.search;
+                                currentParams.set('search', searchInput.value);
+                                window.location.search = currentParams.toString();
+                            });
+                        }
+                    });
+                </script><script>const API_ROUTE = '/__miniserve_internal/api';
+                    let dirSizeCache = {};
+
+                    // Query the directory size from the miniserve API
+                    function fetchDirSize(dir) {
+                        return fetch(API_ROUTE, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            },
+                            method: 'POST',
+                            body: JSON.stringify({
+                                DirSize: dir
+                            })
+                        }).then(resp => resp.ok ? resp.text() : "~")
+                    }
+
+                    function updateSizeCells() {
+                        const directoryCells = document.querySelectorAll('tr.entry-type-directory .size-cell');
+
+                        directoryCells.forEach(cell => {
+                            // Get the dir from the sibling anchor tag.
+                            const href = cell.parentNode.querySelector('a').href;
+                            const target = new URL(href).pathname;
+
+                            // First check our local cache
+                            if (target in dirSizeCache) {
+                                cell.dataset.size = dirSizeCache[target];
+                            } else {
+                                fetchDirSize(target).then(dir_size => {
+                                    cell.dataset.size = dir_size;
+                                    dirSizeCache[target] = dir_size;
+                                })
+                                .catch(error => console.error("Error fetching dir size:", error));
+                            }
+                        })
+                    }
+                    setInterval(updateSizeCells, 1000);
+                </script></head><body><div class="error"><p>404 Not Found</p><p>Route /scp/03/c1/ff/scp-03c1ffbf.xdr.gz could not be found</p><div class="error-nav"><a class="error-back" href="/">Go back to file listing</a></div><p class="footer"><div class="version"><a href="https://github.com/svenstaro/miniserve">miniserve</a>/0.35.0</div></p></div></body></html>
+[2m2026-06-17T23:34:52.275116Z[0m [31mERROR[0m Failed to process scp/03/c1/ff/scp-03c1ffff.xdr.gz: failed to read from scp/03/c1/ff/scp-03c1ffff.xdr.gz: NotFound (permanent) at read, context: { uri: http://127.0.0.1:8088/scp/03/c1/ff/scp-03c1ffff.xdr.gz, response: Parts { status: 404, version: HTTP/1.1, headers: {"content-length": "4626", "content-type": "text/html", "date": "Wed, 17 Jun 2026 23:34:52 GMT"} }, service: http, path: scp/03/c1/ff/scp-03c1ffff.xdr.gz, range: 0- } => <!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light"><link rel="icon" type="image/svg+xml" href="/__miniserve_internal/favicon.svg"><link rel="stylesheet" href="/__miniserve_internal/style.css"><title>404 Not Found</title><script>
+                    // updates the color scheme by setting the theme data attribute
+                    // on body and saving the new theme to local storage
+                    function updateColorScheme(name) {
+                        if (name && name != "default") {
+                            localStorage.setItem('theme', name);
+                            document.body.setAttribute("data-theme", name)
+                        } else {
+                            localStorage.removeItem('theme');
+                            document.body.removeAttribute("data-theme")
+                        }
+                    }
+
+                    // read theme from local storage and apply it to body
+                    function loadColorScheme() {
+                        var name = localStorage.getItem('theme');
+                        updateColorScheme(name);
+                    }
+
+                    // load saved theme on page load
+                    addEventListener("load", loadColorScheme);
+                    // load saved theme when local storage is changed (synchronize between tabs)
+                    addEventListener("storage", loadColorScheme);
+
+                    // handle search form submission
+                    addEventListener("load", function() {
+                        const searchForm = document.getElementById('search');
+                        if (searchForm) {
+                            searchForm.addEventListener('submit', function(event) {
+                                event.preventDefault();
+                                const currentParams = new URLSearchParams(window.location.search);
+                                const searchInput = event.target.elements.search;
+                                currentParams.set('search', searchInput.value);
+                                window.location.search = currentParams.toString();
+                            });
+                        }
+                    });
+                </script><script>const API_ROUTE = '/__miniserve_internal/api';
+                    let dirSizeCache = {};
+
+                    // Query the directory size from the miniserve API
+                    function fetchDirSize(dir) {
+                        return fetch(API_ROUTE, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            },
+                            method: 'POST',
+                            body: JSON.stringify({
+                                DirSize: dir
+                            })
+                        }).then(resp => resp.ok ? resp.text() : "~")
+                    }
+
+                    function updateSizeCells() {
+                        const directoryCells = document.querySelectorAll('tr.entry-type-directory .size-cell');
+
+                        directoryCells.forEach(cell => {
+                            // Get the dir from the sibling anchor tag.
+                            const href = cell.parentNode.querySelector('a').href;
+                            const target = new URL(href).pathname;
+
+                            // First check our local cache
+                            if (target in dirSizeCache) {
+                                cell.dataset.size = dirSizeCache[target];
+                            } else {
+                                fetchDirSize(target).then(dir_size => {
+                                    cell.dataset.size = dir_size;
+                                    dirSizeCache[target] = dir_size;
+                                })
+                                .catch(error => console.error("Error fetching dir size:", error));
+                            }
+                        })
+                    }
+                    setInterval(updateSizeCells, 1000);
+                </script></head><body><div class="error"><p>404 Not Found</p><p>Route /scp/03/c1/ff/scp-03c1ffff.xdr.gz could not be found</p><div class="error-nav"><a class="error-back" href="/">Go back to file listing</a></div><p class="footer"><div class="version"><a href="https://github.com/svenstaro/miniserve">miniserve</a>/0.35.0</div></p></div></body></html>
+[2m2026-06-17T23:34:52.278308Z[0m [31mERROR[0m Failed to process scp/03/c2/00/scp-03c2007f.xdr.gz: failed to read from scp/03/c2/00/scp-03c2007f.xdr.gz: NotFound (permanent) at read, context: { uri: http://127.0.0.1:8088/scp/03/c2/00/scp-03c2007f.xdr.gz, response: Parts { status: 404, version: HTTP/1.1, headers: {"content-length": "4626", "content-type": "text/html", "date": "Wed, 17 Jun 2026 23:34:52 GMT"} }, service: http, path: scp/03/c2/00/scp-03c2007f.xdr.gz, range: 0- } => <!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light"><link rel="icon" type="image/svg+xml" href="/__miniserve_internal/favicon.svg"><link rel="stylesheet" href="/__miniserve_internal/style.css"><title>404 Not Found</title><script>
+                    // updates the color scheme by setting the theme data attribute
+                    // on body and saving the new theme to local storage
+                    function updateColorScheme(name) {
+                        if (name && name != "default") {
+                            localStorage.setItem('theme', name);
+                            document.body.setAttribute("data-theme", name)
+                        } else {
+                            localStorage.removeItem('theme');
+                            document.body.removeAttribute("data-theme")
+                        }
+                    }
+
+                    // read theme from local storage and apply it to body
+                    function loadColorScheme() {
+                        var name = localStorage.getItem('theme');
+                        updateColorScheme(name);
+                    }
+
+                    // load saved theme on page load
+                    addEventListener("load", loadColorScheme);
+                    // load saved theme when local storage is changed (synchronize between tabs)
+                    addEventListener("storage", loadColorScheme);
+
+                    // handle search form submission
+                    addEventListener("load", function() {
+                        const searchForm = document.getElementById('search');
+                        if (searchForm) {
+                            searchForm.addEventListener('submit', function(event) {
+                                event.preventDefault();
+                                const currentParams = new URLSearchParams(window.location.search);
+                                const searchInput = event.target.elements.search;
+                                currentParams.set('search', searchInput.value);
+                                window.location.search = currentParams.toString();
+                            });
+                        }
+                    });
+                </script><script>const API_ROUTE = '/__miniserve_internal/api';
+                    let dirSizeCache = {};
+
+                    // Query the directory size from the miniserve API
+                    function fetchDirSize(dir) {
+                        return fetch(API_ROUTE, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            },
+                            method: 'POST',
+                            body: JSON.stringify({
+                                DirSize: dir
+                            })
+                        }).then(resp => resp.ok ? resp.text() : "~")
+                    }
+
+                    function updateSizeCells() {
+                        const directoryCells = document.querySelectorAll('tr.entry-type-directory .size-cell');
+
+                        directoryCells.forEach(cell => {
+                            // Get the dir from the sibling anchor tag.
+                            const href = cell.parentNode.querySelector('a').href;
+                            const target = new URL(href).pathname;
+
+                            // First check our local cache
+                            if (target in dirSizeCache) {
+                                cell.dataset.size = dirSizeCache[target];
+                            } else {
+                                fetchDirSize(target).then(dir_size => {
+                                    cell.dataset.size = dir_size;
+                                    dirSizeCache[target] = dir_size;
+                                })
+                                .catch(error => console.error("Error fetching dir size:", error));
+                            }
+                        })
+                    }
+                    setInterval(updateSizeCells, 1000);
+                </script></head><body><div class="error"><p>404 Not Found</p><p>Route /scp/03/c2/00/scp-03c2007f.xdr.gz could not be found</p><div class="error-nav"><a class="error-back" href="/">Go back to file listing</a></div><p class="footer"><div class="version"><a href="https://github.com/svenstaro/miniserve">miniserve</a>/0.35.0</div></p></div></body></html>
+[2m2026-06-17T23:34:52.278673Z[0m [31mERROR[0m Failed to process scp/03/c2/00/scp-03c2003f.xdr.gz: failed to read from scp/03/c2/00/scp-03c2003f.xdr.gz: NotFound (permanent) at read, context: { uri: http://127.0.0.1:8088/scp/03/c2/00/scp-03c2003f.xdr.gz, response: Parts { status: 404, version: HTTP/1.1, headers: {"content-length": "4626", "content-type": "text/html", "date": "Wed, 17 Jun 2026 23:34:52 GMT"} }, service: http, path: scp/03/c2/00/scp-03c2003f.xdr.gz, range: 0- } => <!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light"><link rel="icon" type="image/svg+xml" href="/__miniserve_internal/favicon.svg"><link rel="stylesheet" href="/__miniserve_internal/style.css"><title>404 Not Found</title><script>
+                    // updates the color scheme by setting the theme data attribute
+                    // on body and saving the new theme to local storage
+                    function updateColorScheme(name) {
+                        if (name && name != "default") {
+                            localStorage.setItem('theme', name);
+                            document.body.setAttribute("data-theme", name)
+                        } else {
+                            localStorage.removeItem('theme');
+                            document.body.removeAttribute("data-theme")
+                        }
+                    }
+
+                    // read theme from local storage and apply it to body
+                    function loadColorScheme() {
+                        var name = localStorage.getItem('theme');
+                        updateColorScheme(name);
+                    }
+
+                    // load saved theme on page load
+                    addEventListener("load", loadColorScheme);
+                    // load saved theme when local storage is changed (synchronize between tabs)
+                    addEventListener("storage", loadColorScheme);
+
+                    // handle search form submission
+                    addEventListener("load", function() {
+                        const searchForm = document.getElementById('search');
+                        if (searchForm) {
+                            searchForm.addEventListener('submit', function(event) {
+                                event.preventDefault();
+                                const currentParams = new URLSearchParams(window.location.search);
+                                const searchInput = event.target.elements.search;
+                                currentParams.set('search', searchInput.value);
+                                window.location.search = currentParams.toString();
+                            });
+                        }
+                    });
+                </script><script>const API_ROUTE = '/__miniserve_internal/api';
+                    let dirSizeCache = {};
+
+                    // Query the directory size from the miniserve API
+                    function fetchDirSize(dir) {
+                        return fetch(API_ROUTE, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            },
+                            method: 'POST',
+                            body: JSON.stringify({
+                                DirSize: dir
+                            })
+                        }).then(resp => resp.ok ? resp.text() : "~")
+                    }
+
+                    function updateSizeCells() {
+                        const directoryCells = document.querySelectorAll('tr.entry-type-directory .size-cell');
+
+                        directoryCells.forEach(cell => {
+                            // Get the dir from the sibling anchor tag.
+                            const href = cell.parentNode.querySelector('a').href;
+                            const target = new URL(href).pathname;
+
+                            // First check our local cache
+                            if (target in dirSizeCache) {
+                                cell.dataset.size = dirSizeCache[target];
+                            } else {
+                                fetchDirSize(target).then(dir_size => {
+                                    cell.dataset.size = dir_size;
+                                    dirSizeCache[target] = dir_size;
+                                })
+                                .catch(error => console.error("Error fetching dir size:", error));
+                            }
+                        })
+                    }
+                    setInterval(updateSizeCells, 1000);
+                </script></head><body><div class="error"><p>404 Not Found</p><p>Route /scp/03/c2/00/scp-03c2003f.xdr.gz could not be found</p><div class="error-nav"><a class="error-back" href="/">Go back to file listing</a></div><p class="footer"><div class="version"><a href="https://github.com/svenstaro/miniserve">miniserve</a>/0.35.0</div></p></div></body></html>
+[2m2026-06-17T23:34:52.345524Z[0m [31mERROR[0m Failed to process scp/03/c2/00/scp-03c200bf.xdr.gz: failed to read from scp/03/c2/00/scp-03c200bf.xdr.gz: NotFound (permanent) at read, context: { uri: http://127.0.0.1:8088/scp/03/c2/00/scp-03c200bf.xdr.gz, response: Parts { status: 404, version: HTTP/1.1, headers: {"content-length": "4626", "content-type": "text/html", "date": "Wed, 17 Jun 2026 23:34:52 GMT"} }, service: http, path: scp/03/c2/00/scp-03c200bf.xdr.gz, range: 0- } => <!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light"><link rel="icon" type="image/svg+xml" href="/__miniserve_internal/favicon.svg"><link rel="stylesheet" href="/__miniserve_internal/style.css"><title>404 Not Found</title><script>
+                    // updates the color scheme by setting the theme data attribute
+                    // on body and saving the new theme to local storage
+                    function updateColorScheme(name) {
+                        if (name && name != "default") {
+                            localStorage.setItem('theme', name);
+                            document.body.setAttribute("data-theme", name)
+                        } else {
+                            localStorage.removeItem('theme');
+                            document.body.removeAttribute("data-theme")
+                        }
+                    }
+
+                    // read theme from local storage and apply it to body
+                    function loadColorScheme() {
+                        var name = localStorage.getItem('theme');
+                        updateColorScheme(name);
+                    }
+
+                    // load saved theme on page load
+                    addEventListener("load", loadColorScheme);
+                    // load saved theme when local storage is changed (synchronize between tabs)
+                    addEventListener("storage", loadColorScheme);
+
+                    // handle search form submission
+                    addEventListener("load", function() {
+                        const searchForm = document.getElementById('search');
+                        if (searchForm) {
+                            searchForm.addEventListener('submit', function(event) {
+                                event.preventDefault();
+                                const currentParams = new URLSearchParams(window.location.search);
+                                const searchInput = event.target.elements.search;
+                                currentParams.set('search', searchInput.value);
+                                window.location.search = currentParams.toString();
+                            });
+                        }
+                    });
+                </script><script>const API_ROUTE = '/__miniserve_internal/api';
+                    let dirSizeCache = {};
+
+                    // Query the directory size from the miniserve API
+                    function fetchDirSize(dir) {
+                        return fetch(API_ROUTE, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            },
+                            method: 'POST',
+                            body: JSON.stringify({
+                                DirSize: dir
+                            })
+                        }).then(resp => resp.ok ? resp.text() : "~")
+                    }
+
+                    function updateSizeCells() {
+                        const directoryCells = document.querySelectorAll('tr.entry-type-directory .size-cell');
+
+                        directoryCells.forEach(cell => {
+                            // Get the dir from the sibling anchor tag.
+                            const href = cell.parentNode.querySelector('a').href;
+                            const target = new URL(href).pathname;
+
+                            // First check our local cache
+                            if (target in dirSizeCache) {
+                                cell.dataset.size = dirSizeCache[target];
+                            } else {
+                                fetchDirSize(target).then(dir_size => {
+                                    cell.dataset.size = dir_size;
+                                    dirSizeCache[target] = dir_size;
+                                })
+                                .catch(error => console.error("Error fetching dir size:", error));
+                            }
+                        })
+                    }
+                    setInterval(updateSizeCells, 1000);
+                </script></head><body><div class="error"><p>404 Not Found</p><p>Route /scp/03/c2/00/scp-03c200bf.xdr.gz could not be found</p><div class="error-nav"><a class="error-back" href="/">Go back to file listing</a></div><p class="footer"><div class="version"><a href="https://github.com/svenstaro/miniserve">miniserve</a>/0.35.0</div></p></div></body></html>
+[2m2026-06-17T23:34:53.825173Z[0m [31mERROR[0m Failed to process scp/03/c2/01/scp-03c2013f.xdr.gz: failed to read from scp/03/c2/01/scp-03c2013f.xdr.gz: NotFound (permanent) at read, context: { uri: http://127.0.0.1:8088/scp/03/c2/01/scp-03c2013f.xdr.gz, response: Parts { status: 404, version: HTTP/1.1, headers: {"content-length": "4626", "content-type": "text/html", "date": "Wed, 17 Jun 2026 23:34:53 GMT"} }, service: http, path: scp/03/c2/01/scp-03c2013f.xdr.gz, range: 0- } => <!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light"><link rel="icon" type="image/svg+xml" href="/__miniserve_internal/favicon.svg"><link rel="stylesheet" href="/__miniserve_internal/style.css"><title>404 Not Found</title><script>
+                    // updates the color scheme by setting the theme data attribute
+                    // on body and saving the new theme to local storage
+                    function updateColorScheme(name) {
+                        if (name && name != "default") {
+                            localStorage.setItem('theme', name);
+                            document.body.setAttribute("data-theme", name)
+                        } else {
+                            localStorage.removeItem('theme');
+                            document.body.removeAttribute("data-theme")
+                        }
+                    }
+
+                    // read theme from local storage and apply it to body
+                    function loadColorScheme() {
+                        var name = localStorage.getItem('theme');
+                        updateColorScheme(name);
+                    }
+
+                    // load saved theme on page load
+                    addEventListener("load", loadColorScheme);
+                    // load saved theme when local storage is changed (synchronize between tabs)
+                    addEventListener("storage", loadColorScheme);
+
+                    // handle search form submission
+                    addEventListener("load", function() {
+                        const searchForm = document.getElementById('search');
+                        if (searchForm) {
+                            searchForm.addEventListener('submit', function(event) {
+                                event.preventDefault();
+                                const currentParams = new URLSearchParams(window.location.search);
+                                const searchInput = event.target.elements.search;
+                                currentParams.set('search', searchInput.value);
+                                window.location.search = currentParams.toString();
+                            });
+                        }
+                    });
+                </script><script>const API_ROUTE = '/__miniserve_internal/api';
+                    let dirSizeCache = {};
+
+                    // Query the directory size from the miniserve API
+                    function fetchDirSize(dir) {
+                        return fetch(API_ROUTE, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            },
+                            method: 'POST',
+                            body: JSON.stringify({
+                                DirSize: dir
+                            })
+                        }).then(resp => resp.ok ? resp.text() : "~")
+                    }
+
+                    function updateSizeCells() {
+                        const directoryCells = document.querySelectorAll('tr.entry-type-directory .size-cell');
+
+                        directoryCells.forEach(cell => {
+                            // Get the dir from the sibling anchor tag.
+                            const href = cell.parentNode.querySelector('a').href;
+                            const target = new URL(href).pathname;
+
+                            // First check our local cache
+                            if (target in dirSizeCache) {
+                                cell.dataset.size = dirSizeCache[target];
+                            } else {
+                                fetchDirSize(target).then(dir_size => {
+                                    cell.dataset.size = dir_size;
+                                    dirSizeCache[target] = dir_size;
+                                })
+                                .catch(error => console.error("Error fetching dir size:", error));
+                            }
+                        })
+                    }
+                    setInterval(updateSizeCells, 1000);
+                </script></head><body><div class="error"><p>404 Not Found</p><p>Route /scp/03/c2/01/scp-03c2013f.xdr.gz could not be found</p><div class="error-nav"><a class="error-back" href="/">Go back to file listing</a></div><p class="footer"><div class="version"><a href="https://github.com/svenstaro/miniserve">miniserve</a>/0.35.0</div></p></div></body></html>
+[2m2026-06-17T23:34:53.826333Z[0m [31mERROR[0m Failed to process scp/03/c2/01/scp-03c2017f.xdr.gz: failed to read from scp/03/c2/01/scp-03c2017f.xdr.gz: NotFound (permanent) at read, context: { uri: http://127.0.0.1:8088/scp/03/c2/01/scp-03c2017f.xdr.gz, response: Parts { status: 404, version: HTTP/1.1, headers: {"content-length": "4626", "content-type": "text/html", "date": "Wed, 17 Jun 2026 23:34:53 GMT"} }, service: http, path: scp/03/c2/01/scp-03c2017f.xdr.gz, range: 0- } => <!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light"><link rel="icon" type="image/svg+xml" href="/__miniserve_internal/favicon.svg"><link rel="stylesheet" href="/__miniserve_internal/style.css"><title>404 Not Found</title><script>
+                    // updates the color scheme by setting the theme data attribute
+                    // on body and saving the new theme to local storage
+                    function updateColorScheme(name) {
+                        if (name && name != "default") {
+                            localStorage.setItem('theme', name);
+                            document.body.setAttribute("data-theme", name)
+                        } else {
+                            localStorage.removeItem('theme');
+                            document.body.removeAttribute("data-theme")
+                        }
+                    }
+
+                    // read theme from local storage and apply it to body
+                    function loadColorScheme() {
+                        var name = localStorage.getItem('theme');
+                        updateColorScheme(name);
+                    }
+
+                    // load saved theme on page load
+                    addEventListener("load", loadColorScheme);
+                    // load saved theme when local storage is changed (synchronize between tabs)
+                    addEventListener("storage", loadColorScheme);
+
+                    // handle search form submission
+                    addEventListener("load", function() {
+                        const searchForm = document.getElementById('search');
+                        if (searchForm) {
+                            searchForm.addEventListener('submit', function(event) {
+                                event.preventDefault();
+                                const currentParams = new URLSearchParams(window.location.search);
+                                const searchInput = event.target.elements.search;
+                                currentParams.set('search', searchInput.value);
+                                window.location.search = currentParams.toString();
+                            });
+                        }
+                    });
+                </script><script>const API_ROUTE = '/__miniserve_internal/api';
+                    let dirSizeCache = {};
+
+                    // Query the directory size from the miniserve API
+                    function fetchDirSize(dir) {
+                        return fetch(API_ROUTE, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            },
+                            method: 'POST',
+                            body: JSON.stringify({
+                                DirSize: dir
+                            })
+                        }).then(resp => resp.ok ? resp.text() : "~")
+                    }
+
+                    function updateSizeCells() {
+                        const directoryCells = document.querySelectorAll('tr.entry-type-directory .size-cell');
+
+                        directoryCells.forEach(cell => {
+                            // Get the dir from the sibling anchor tag.
+                            const href = cell.parentNode.querySelector('a').href;
+                            const target = new URL(href).pathname;
+
+                            // First check our local cache
+                            if (target in dirSizeCache) {
+                                cell.dataset.size = dirSizeCache[target];
+                            } else {
+                                fetchDirSize(target).then(dir_size => {
+                                    cell.dataset.size = dir_size;
+                                    dirSizeCache[target] = dir_size;
+                                })
+                                .catch(error => console.error("Error fetching dir size:", error));
+                            }
+                        })
+                    }
+                    setInterval(updateSizeCells, 1000);
+                </script></head><body><div class="error"><p>404 Not Found</p><p>Route /scp/03/c2/01/scp-03c2017f.xdr.gz could not be found</p><div class="error-nav"><a class="error-back" href="/">Go back to file listing</a></div><p class="footer"><div class="version"><a href="https://github.com/svenstaro/miniserve">miniserve</a>/0.35.0</div></p></div></body></html>
+[2m2026-06-17T23:34:54.550597Z[0m [31mERROR[0m Failed to process scp/03/c2/00/scp-03c200ff.xdr.gz: failed to read from scp/03/c2/00/scp-03c200ff.xdr.gz: NotFound (permanent) at read, context: { uri: http://127.0.0.1:8088/scp/03/c2/00/scp-03c200ff.xdr.gz, response: Parts { status: 404, version: HTTP/1.1, headers: {"content-length": "4626", "content-type": "text/html", "date": "Wed, 17 Jun 2026 23:34:53 GMT"} }, service: http, path: scp/03/c2/00/scp-03c200ff.xdr.gz, range: 0- } => <!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light"><link rel="icon" type="image/svg+xml" href="/__miniserve_internal/favicon.svg"><link rel="stylesheet" href="/__miniserve_internal/style.css"><title>404 Not Found</title><script>
+                    // updates the color scheme by setting the theme data attribute
+                    // on body and saving the new theme to local storage
+                    function updateColorScheme(name) {
+                        if (name && name != "default") {
+                            localStorage.setItem('theme', name);
+                            document.body.setAttribute("data-theme", name)
+                        } else {
+                            localStorage.removeItem('theme');
+                            document.body.removeAttribute("data-theme")
+                        }
+                    }
+
+                    // read theme from local storage and apply it to body
+                    function loadColorScheme() {
+                        var name = localStorage.getItem('theme');
+                        updateColorScheme(name);
+                    }
+
+                    // load saved theme on page load
+                    addEventListener("load", loadColorScheme);
+                    // load saved theme when local storage is changed (synchronize between tabs)
+                    addEventListener("storage", loadColorScheme);
+
+                    // handle search form submission
+                    addEventListener("load", function() {
+                        const searchForm = document.getElementById('search');
+                        if (searchForm) {
+                            searchForm.addEventListener('submit', function(event) {
+                                event.preventDefault();
+                                const currentParams = new URLSearchParams(window.location.search);
+                                const searchInput = event.target.elements.search;
+                                currentParams.set('search', searchInput.value);
+                                window.location.search = currentParams.toString();
+                            });
+                        }
+                    });
+                </script><script>const API_ROUTE = '/__miniserve_internal/api';
+                    let dirSizeCache = {};
+
+                    // Query the directory size from the miniserve API
+                    function fetchDirSize(dir) {
+                        return fetch(API_ROUTE, {
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            },
+                            method: 'POST',
+                            body: JSON.stringify({
+                                DirSize: dir
+                            })
+                        }).then(resp => resp.ok ? resp.text() : "~")
+                    }
+
+                    function updateSizeCells() {
+                        const directoryCells = document.querySelectorAll('tr.entry-type-directory .size-cell');
+
+                        directoryCells.forEach(cell => {
+                            // Get the dir from the sibling anchor tag.
+                            const href = cell.parentNode.querySelector('a').href;
+                            const target = new URL(href).pathname;
+
+                            // First check our local cache
+                            if (target in dirSizeCache) {
+                                cell.dataset.size = dirSizeCache[target];
+                            } else {
+                                fetchDirSize(target).then(dir_size => {
+                                    cell.dataset.size = dir_size;
+                                    dirSizeCache[target] = dir_size;
+                                })
+                                .catch(error => console.error("Error fetching dir size:", error));
+                            }
+                        })
+                    }
+                    setInterval(updateSizeCells, 1000);
+                </script></head><body><div class="error"><p>404 Not Found</p><p>Route /scp/03/c2/00/scp-03c200ff.xdr.gz could not be found</p><div class="error-nav"><a class="error-back" href="/">Go back to file listing</a></div><p class="footer"><div class="version"><a href="https://github.com/svenstaro/miniserve">miniserve</a>/0.35.0</div></p></div></body></html>
+[2m2026-06-17T23:35:45.899327Z[0m [32m INFO[0m Progress: 17/17 checkpoints processed
+[2m2026-06-17T23:35:45.899374Z[0m [32m INFO[0m Scan complete: 239 files found, 17 missing
+[2m2026-06-17T23:35:45.899387Z[0m [33m WARN[0m Missing 17 optional scp files

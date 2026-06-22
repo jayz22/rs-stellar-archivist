@@ -1,0 +1,70 @@
+--- nethealth sample 1 (c=1) ---
+=== nethealth: pid 1624011 (sa-verify-async), 5.02s window, 32 cores ===
+[A] Cores      : app uses 4.91 cores of 32 | 5.5 core-equiv busy system-wide | 4 core(s) >50%
+[B] Threads    : 34 total, 4 running | states {R=4 S=30 } | parked-on: futex_wait_queue(28) 0(4) hrtimer_nanosleep(1) ep_poll(1) 
+[C] Conns      : 6 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 6 socks | SRTT median 8.26 / max 66.56 ms | minRTT(path) min 0.48 / median 1.42 ms | per-socket retrans total 5
+[E] TCP health : retrans 9/17729 segs (0.051%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 0
+--- nethealth sample 2 (c=1) ---
+=== nethealth: pid 1624011 (sa-verify-async), 5.02s window, 32 cores ===
+[A] Cores      : app uses 1.87 cores of 32 | 2.1 core-equiv busy system-wide | 1 core(s) >50%
+[B] Threads    : 34 total, 1 running | states {R=1 S=33 } | parked-on: futex_wait_queue(31) hrtimer_nanosleep(1) ep_poll(1) 0(1) 
+[C] Conns      : 4 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 5 socks | SRTT median 6.06 / max 66.23 ms | minRTT(path) min 0.48 / median 1.48 ms | per-socket retrans total 5
+[E] TCP health : retrans 0/9742 segs (0.000%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 1
+--- nethealth sample 3 (c=1) ---
+=== nethealth: pid 1624011 (sa-verify-async), 5.02s window, 32 cores ===
+[A] Cores      : app uses 1.01 cores of 32 | 1.3 core-equiv busy system-wide | 1 core(s) >50%
+[B] Threads    : 34 total, 1 running | states {R=1 S=33 } | parked-on: futex_wait_queue(31) hrtimer_nanosleep(1) ep_poll(1) 0(1) 
+[C] Conns      : 1 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 6 socks | SRTT median 5.79 / max 63.65 ms | minRTT(path) min 0.48 / median 1.38 ms | per-socket retrans total 5
+[E] TCP health : retrans 0/3711 segs (0.000%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 0
+--- nethealth sample 4 (c=1) ---
+=== nethealth: pid 1624011 (sa-verify-async), 5.02s window, 32 cores ===
+[A] Cores      : app uses 1.01 cores of 32 | 1.2 core-equiv busy system-wide | 1 core(s) >50%
+[B] Threads    : 34 total, 2 running | states {R=1 S=33 } | parked-on: futex_wait_queue(31) hrtimer_nanosleep(1) ep_poll(1) 0(1) 
+[C] Conns      : 1 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 6 socks | SRTT median 4.30 / max 68.00 ms | minRTT(path) min 0.48 / median 1.38 ms | per-socket retrans total 5
+[E] TCP health : retrans 0/4325 segs (0.000%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 1
+--- nethealth sample 5 (c=1) ---
+=== nethealth: pid 1624011 (sa-verify-async), 5.02s window, 32 cores ===
+[A] Cores      : app uses 1.01 cores of 32 | 1.1 core-equiv busy system-wide | 1 core(s) >50%
+[B] Threads    : 34 total, 1 running | states {R=1 S=33 } | parked-on: futex_wait_queue(31) hrtimer_nanosleep(1) ep_poll(1) 0(1) 
+[C] Conns      : 1 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 6 socks | SRTT median 4.30 / max 68.00 ms | minRTT(path) min 0.48 / median 1.38 ms | per-socket retrans total 5
+[E] TCP health : retrans 0/3633 segs (0.000%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 0
+--- nethealth sample 6 (c=1) ---
+=== nethealth: pid 1624011 (sa-verify-async), 5.02s window, 32 cores ===
+[A] Cores      : app uses 1.01 cores of 32 | 1.3 core-equiv busy system-wide | 1 core(s) >50%
+[B] Threads    : 34 total, 1 running | states {R=1 S=33 } | parked-on: futex_wait_queue(31) hrtimer_nanosleep(1) ep_poll(1) 0(1) 
+[C] Conns      : 1 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 6 socks | SRTT median 4.17 / max 68.00 ms | minRTT(path) min 0.48 / median 1.38 ms | per-socket retrans total 5
+[E] TCP health : retrans 0/3664 segs (0.000%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 0
+--- nethealth sample 7 (c=1) ---
+=== nethealth: pid 1624011 (sa-verify-async), 5.03s window, 32 cores ===
+[A] Cores      : app uses 1.02 cores of 32 | 1.1 core-equiv busy system-wide | 1 core(s) >50%
+[B] Threads    : 34 total, 1 running | states {R=1 S=33 } | parked-on: futex_wait_queue(31) hrtimer_nanosleep(1) ep_poll(1) 0(1) 
+[C] Conns      : 1 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 6 socks | SRTT median 4.17 / max 68.00 ms | minRTT(path) min 0.48 / median 1.38 ms | per-socket retrans total 5
+[E] TCP health : retrans 0/4845 segs (0.000%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 0
+--- nethealth sample 8 (c=1) ---
+=== nethealth: pid 1624011 (sa-verify-async), 5.03s window, 32 cores ===
+[A] Cores      : app uses 1.15 cores of 32 | 1.3 core-equiv busy system-wide | 1 core(s) >50%
+[B] Threads    : 34 total, 1 running | states {R=1 S=33 } | parked-on: futex_wait_queue(31) hrtimer_nanosleep(1) ep_poll(1) 0(1) 
+[C] Conns      : 11 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 6 socks | SRTT median 4.17 / max 68.00 ms | minRTT(path) min 0.48 / median 1.38 ms | per-socket retrans total 5
+[E] TCP health : retrans 4/5604 segs (0.071%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 10
+--- nethealth sample 9 (c=1) ---
+=== nethealth: pid 1624011 (sa-verify-async), 5.02s window, 32 cores ===
+[A] Cores      : app uses 1.56 cores of 32 | 1.9 core-equiv busy system-wide | 0 core(s) >50%
+[B] Threads    : 34 total, 1 running | states {R=1 S=33 } | parked-on: futex_wait_queue(31) hrtimer_nanosleep(1) ep_poll(1) 0(1) 
+[C] Conns      : 11 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 7 socks | SRTT median 5.55 / max 68.00 ms | minRTT(path) min 0.48 / median 1.48 ms | per-socket retrans total 5
+[E] TCP health : retrans 8/10503 segs (0.076%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 1
+--- nethealth sample 10 (c=1) ---
+=== nethealth: pid 1624011 (sa-verify-async), 5.02s window, 32 cores ===
+[A] Cores      : app uses 1.92 cores of 32 | 2.2 core-equiv busy system-wide | 0 core(s) >50%
+[B] Threads    : 34 total, 1 running | states {R=1 S=33 } | parked-on: futex_wait_queue(31) hrtimer_nanosleep(1) ep_poll(1) 0(1) 
+[C] Conns      : 10 established(:443) | 0 syn-sent (connecting)
+[D] RTT(:443)  : 8 socks | SRTT median 4.94 / max 63.11 ms | minRTT(path) min 0.48 / median 1.38 ms | per-socket retrans total 5
+[E] TCP health : retrans 45/14474 segs (0.311%) | timeouts 0 | lost-retrans 0 | syn-retrans 0 | attempt-fails 0 | estab-resets 0 | active-opens 1

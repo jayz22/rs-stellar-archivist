@@ -1,0 +1,6 @@
+[2m2026-06-17T23:42:13.797061Z[0m [32m INFO[0m Starting scan of http://127.0.0.1:8088
+[2m2026-06-17T23:42:13.797122Z[0m [32m INFO[0m Scanning from ledger 63045000 onwards
+[2m2026-06-17T23:42:13.797134Z[0m [32m INFO[0m Scanning up to checkpoint 63046015
+[2m2026-06-17T23:42:13.799308Z[0m [32m INFO[0m Processing 17 checkpoints from 63044991 (0x03c1fd7f) to 63046015 (0x03c2017f)
+[2m2026-06-17T23:43:10.388504Z[0m [32m INFO[0m Progress: 17/17 checkpoints processed
+[2m2026-06-17T23:43:10.388570Z[0m [32m INFO[0m Scan complete: 239 files found, 0 missing

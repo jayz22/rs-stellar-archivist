@@ -1,0 +1,35 @@
+PERF wall_ms=56015 peak_rss_mb=1165.5 files=239 bytes=19666468629 mb_per_s=351.1
+PERF_PHASE history_fetch,1121.1,0.4,17,0.1
+PERF_PHASE history_parse,2.6,0.0,17,0.0
+PERF_PHASE bucket_stream,235489.6,87.0,171,19228.7
+PERF_PHASE xdr_decompress,29722.4,11.0,51,437.7
+PERF_PHASE xdr_parse_ledger,4.0,0.0,17,0.0
+PERF_PHASE xdr_parse_tx,3448.0,1.3,17,0.0
+PERF_PHASE xdr_parse_result,838.1,0.3,17,0.0
+PERF_PHASE xdr_parse_scp,0.0,0.0,0,0.0
+PERF_PHASE cross_file_verify,0.4,0.0,17,0.0
+PERF_PHASE chain_verify,0.0,0.0,1,0.0
+PERF_PHASE copy,0.0,0.0,0,0.0
+	Command being timed: "bin/sa-verify-async scan http://127.0.0.1:8088 -c 8 --max-concurrent 64 --verify --skip-optional --low 63045000 --high 63046015 --report perf-results/maxconc/verifysim/gate2/report.json"
+	User time (seconds): 136.59
+	System time (seconds): 2.77
+	Percent of CPU this job got: 248%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:56.10
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 1138188
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 460137
+	Voluntary context switches: 56067
+	Involuntary context switches: 1410
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 64
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

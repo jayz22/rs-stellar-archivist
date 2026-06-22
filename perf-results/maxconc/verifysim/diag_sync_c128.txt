@@ -1,0 +1,72 @@
+===== sample 0 =====
+CLIENT sa-verify : 6.73 cores (71 thr)   states {R=2 S=69 } wait: futex_wait_queue(66) 0(4) ep_poll(1) 
+SERVER miniserve : 0.65 cores (53 thr)   states {S=52 ac)=1 }
+IN-FLIGHT reqs   : 99 ESTAB conns -> :8088 (66 ACTIVE w/ data queued)
+Throughput lo RX : 335.8 MB/s
+Disk read        : 198.4 MB/s, 1833 reads/s, read-await 0.54 ms, %util 13%
+===== sample 1 =====
+CLIENT sa-verify : 5.69 cores (545 thr)   states {R=2 S=543 } wait: futex_wait_queue(540) 0(3) ep_poll(2) 
+SERVER miniserve : 0.40 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 143 ESTAB conns -> :8088 (90 ACTIVE w/ data queued)
+Throughput lo RX : 270.8 MB/s
+Disk read        : 0.2 MB/s, 25 reads/s, read-await 0.15 ms, %util 0%
+===== sample 2 =====
+CLIENT sa-verify : 2.38 cores (545 thr)   states {R=2 S=424 } wait: futex_wait_queue(470) 0(6) ep_poll(1) 
+SERVER miniserve : 0.14 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 98 ESTAB conns -> :8088 (30 ACTIVE w/ data queued)
+Throughput lo RX : 75.5 MB/s
+Disk read        : 0.0 MB/s, 0 reads/s, read-await 0.33 ms, %util 0%
+===== sample 3 =====
+CLIENT sa-verify : 5.20 cores (545 thr)   states {R=2 S=543 } wait: futex_wait_queue(541) 0(3) ep_poll(1) 
+SERVER miniserve : 0.37 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 83 ESTAB conns -> :8088 (47 ACTIVE w/ data queued)
+Throughput lo RX : 257.5 MB/s
+Disk read        : 0.0 MB/s, 1 reads/s, read-await 0.12 ms, %util 0%
+===== sample 4 =====
+CLIENT sa-verify : 4.76 cores (545 thr)   states {R=3 S=542 } wait: futex_wait_queue(541) 0(3) ep_poll(1) 
+SERVER miniserve : 0.37 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 141 ESTAB conns -> :8088 (67 ACTIVE w/ data queued)
+Throughput lo RX : 223.1 MB/s
+Disk read        : 0.1 MB/s, 18 reads/s, read-await 0.16 ms, %util 0%
+===== sample 5 =====
+CLIENT sa-verify : 1.40 cores (376 thr)   states {R=2 S=345 } wait: futex_wait_queue(345) ep_poll(1) 0(1) 
+SERVER miniserve : 0.07 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 103 ESTAB conns -> :8088 (36 ACTIVE w/ data queued)
+Throughput lo RX : 26.8 MB/s
+Disk read        : 0.1 MB/s, 21 reads/s, read-await 0.15 ms, %util 0%
+===== sample 6 =====
+CLIENT sa-verify : 5.25 cores (545 thr)   states {R=2 S=543 } wait: futex_wait_queue(543) ep_poll(1) 0(1) 
+SERVER miniserve : 0.41 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 102 ESTAB conns -> :8088 (59 ACTIVE w/ data queued)
+Throughput lo RX : 266.3 MB/s
+Disk read        : 7.9 MB/s, 105 reads/s, read-await 0.38 ms, %util 1%
+===== sample 7 =====
+CLIENT sa-verify : 1.53 cores (545 thr)   states {R=1 S=459 } wait: futex_wait_queue(490) 0(16) ep_poll(1) 
+SERVER miniserve : 0.10 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 99 ESTAB conns -> :8088 (32 ACTIVE w/ data queued)
+Throughput lo RX : 38.0 MB/s
+Disk read        : 0.3 MB/s, 11 reads/s, read-await 0.19 ms, %util 0%
+===== sample 8 =====
+CLIENT sa-verify : 2.61 cores (390 thr)   states {R=1 S=544 } wait: futex_wait_queue(511) run(32) ep_poll(1) 0(1) 
+SERVER miniserve : 0.17 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 105 ESTAB conns -> :8088 (66 ACTIVE w/ data queued)
+Throughput lo RX : 134.0 MB/s
+Disk read        : 0.2 MB/s, 6 reads/s, read-await 0.23 ms, %util 0%
+===== sample 9 =====
+CLIENT sa-verify : 3.24 cores (545 thr)   states {R=12 S=533 } wait: futex_wait_queue(542) 0(2) ep_poll(1) 
+SERVER miniserve : 0.25 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 100 ESTAB conns -> :8088 (39 ACTIVE w/ data queued)
+Throughput lo RX : 131.2 MB/s
+Disk read        : 1.6 MB/s, 18 reads/s, read-await 0.38 ms, %util 0%
+===== sample 10 =====
+CLIENT sa-verify : 1.52 cores (269 thr)   states {R=1 S=267 } wait: futex_wait_queue(266) 0(2) ep_poll(1) 
+SERVER miniserve : 0.08 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 83 ESTAB conns -> :8088 (35 ACTIVE w/ data queued)
+Throughput lo RX : 48.3 MB/s
+Disk read        : 7.1 MB/s, 109 reads/s, read-await 0.28 ms, %util 1%
+===== sample 11 =====
+CLIENT sa-verify : 3.20 cores (545 thr)   states {R=2 S=543 } wait: futex_wait_queue(539) 0(5) ep_poll(1) 
+SERVER miniserve : 0.27 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 124 ESTAB conns -> :8088 (46 ACTIVE w/ data queued)
+Throughput lo RX : 129.6 MB/s
+Disk read        : 49.1 MB/s, 593 reads/s, read-await 0.36 ms, %util 19%

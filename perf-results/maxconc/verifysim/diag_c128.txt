@@ -1,0 +1,96 @@
+===== sample 0 =====
+CLIENT sa-verify : 0.00 cores (1 thr)   states {S=1 } wait: sigsuspend(1) 
+SERVER miniserve : 0.12 cores (30 thr)   states {S=29 ac)=1 }
+IN-FLIGHT reqs   : 119 ESTAB conns -> :8088
+Throughput lo RX : 103.2 MB/s
+Disk read        : 2.0 MB/s, 127 reads/s, read-await 0.18 ms, %util 1%
+===== sample 1 =====
+CLIENT sa-verify : 0.00 cores (1 thr)   states {S=1 } wait: sigsuspend(1) 
+SERVER miniserve : 0.30 cores (63 thr)   states {S=62 ac)=1 }
+IN-FLIGHT reqs   : 160 ESTAB conns -> :8088
+Throughput lo RX : 240.9 MB/s
+Disk read        : 6.7 MB/s, 527 reads/s, read-await 0.18 ms, %util 3%
+===== sample 2 =====
+CLIENT sa-verify : 0.00 cores (1 thr)   states {S=1 } wait: sigsuspend(1) 
+SERVER miniserve : 0.07 cores (63 thr)   states {S=62 ac)=1 }
+IN-FLIGHT reqs   : 85 ESTAB conns -> :8088
+Throughput lo RX : 50.2 MB/s
+Disk read        : 0.3 MB/s, 24 reads/s, read-await 0.17 ms, %util 1%
+===== sample 3 =====
+CLIENT sa-verify : 0.00 cores (1 thr)   states {S=1 } wait: sigsuspend(1) 
+SERVER miniserve : 0.25 cores (66 thr)   states {S=65 ac)=1 }
+IN-FLIGHT reqs   : 144 ESTAB conns -> :8088
+Throughput lo RX : 200.1 MB/s
+Disk read        : 0.7 MB/s, 28 reads/s, read-await 0.19 ms, %util 0%
+===== sample 4 =====
+CLIENT sa-verify : 0.00 cores (1 thr)   states {S=1 } wait: sigsuspend(1) 
+SERVER miniserve : 0.09 cores (66 thr)   states {S=65 ac)=1 }
+IN-FLIGHT reqs   : 131 ESTAB conns -> :8088
+Throughput lo RX : 70.1 MB/s
+Disk read        : 0.1 MB/s, 1 reads/s, read-await 0.17 ms, %util 0%
+===== sample 5 =====
+CLIENT sa-verify : 0.00 cores (1 thr)   states {S=1 } wait: sigsuspend(1) 
+SERVER miniserve : 0.24 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 118 ESTAB conns -> :8088
+Throughput lo RX : 200.9 MB/s
+Disk read        : 2.0 MB/s, 219 reads/s, read-await 0.18 ms, %util 4%
+===== sample 6 =====
+CLIENT sa-verify : 0.00 cores (1 thr)   states {S=1 } wait: sigsuspend(1) 
+SERVER miniserve : 0.12 cores (70 thr)   states {R=1 S=68 ac)=1 }
+IN-FLIGHT reqs   : 129 ESTAB conns -> :8088
+Throughput lo RX : 94.6 MB/s
+Disk read        : 5.4 MB/s, 555 reads/s, read-await 0.18 ms, %util 8%
+===== sample 7 =====
+CLIENT sa-verify : 0.00 cores (1 thr)   states {S=1 } wait: sigsuspend(1) 
+SERVER miniserve : 0.22 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 132 ESTAB conns -> :8088
+Throughput lo RX : 167.7 MB/s
+Disk read        : 13.6 MB/s, 990 reads/s, read-await 0.18 ms, %util 6%
+===== sample 8 =====
+CLIENT sa-verify : 0.00 cores (1 thr)   states {S=1 } wait: sigsuspend(1) 
+SERVER miniserve : 0.16 cores (70 thr)   states {R=1 S=68 ac)=1 }
+IN-FLIGHT reqs   : 119 ESTAB conns -> :8088
+Throughput lo RX : 128.3 MB/s
+Disk read        : 6.5 MB/s, 240 reads/s, read-await 0.19 ms, %util 4%
+===== sample 9 =====
+CLIENT sa-verify : 0.00 cores (1 thr)   states {S=1 } wait: sigsuspend(1) 
+SERVER miniserve : 0.14 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 117 ESTAB conns -> :8088
+Throughput lo RX : 114.0 MB/s
+Disk read        : 4.5 MB/s, 106 reads/s, read-await 0.22 ms, %util 1%
+===== sample 10 =====
+CLIENT sa-verify : 0.00 cores (1 thr)   states {S=1 } wait: sigsuspend(1) 
+SERVER miniserve : 0.19 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 128 ESTAB conns -> :8088
+Throughput lo RX : 156.5 MB/s
+Disk read        : 2.6 MB/s, 49 reads/s, read-await 0.23 ms, %util 1%
+===== sample 11 =====
+CLIENT sa-verify : 0.00 cores (1 thr)   states {S=1 } wait: sigsuspend(1) 
+SERVER miniserve : 0.13 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 102 ESTAB conns -> :8088
+Throughput lo RX : 105.3 MB/s
+Disk read        : 3.9 MB/s, 62 reads/s, read-await 0.25 ms, %util 1%
+===== sample 12 =====
+CLIENT sa-verify : 0.00 cores (1 thr)   states {S=1 } wait: sigsuspend(1) 
+SERVER miniserve : 0.18 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 127 ESTAB conns -> :8088
+Throughput lo RX : 142.6 MB/s
+Disk read        : 0.5 MB/s, 10 reads/s, read-await 0.21 ms, %util 23%
+===== sample 13 =====
+CLIENT sa-verify : 0.00 cores (1 thr)   states {S=1 } wait: sigsuspend(1) 
+SERVER miniserve : 0.15 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 123 ESTAB conns -> :8088
+Throughput lo RX : 119.6 MB/s
+Disk read        : 15.5 MB/s, 197 reads/s, read-await 0.33 ms, %util 3%
+===== sample 14 =====
+CLIENT sa-verify : 0.00 cores (1 thr)   states {S=1 } wait: sigsuspend(1) 
+SERVER miniserve : 0.14 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 118 ESTAB conns -> :8088
+Throughput lo RX : 113.5 MB/s
+Disk read        : 5.8 MB/s, 55 reads/s, read-await 0.52 ms, %util 0%
+===== sample 15 =====
+CLIENT sa-verify : 0.00 cores (1 thr)   states {S=1 } wait: sigsuspend(1) 
+SERVER miniserve : 0.17 cores (70 thr)   states {S=69 ac)=1 }
+IN-FLIGHT reqs   : 121 ESTAB conns -> :8088
+Throughput lo RX : 124.3 MB/s
+Disk read        : 55.2 MB/s, 553 reads/s, read-await 0.42 ms, %util 31%

@@ -1,0 +1,19 @@
+[2m2026-06-18T00:09:31.744838Z[0m [32m INFO[0m Starting scan of http://127.0.0.1:8088
+[2m2026-06-18T00:09:31.744898Z[0m [32m INFO[0m Scanning from ledger 50463103 onwards
+[2m2026-06-18T00:09:31.744909Z[0m [32m INFO[0m Scanning up to checkpoint 63046015
+[2m2026-06-18T00:09:31.747142Z[0m [32m INFO[0m Processing 196609 checkpoints from 50463103 (0x0302017f) to 63046015 (0x03c2017f)
+[2m2026-06-18T00:10:04.096008Z[0m [32m INFO[0m Progress: 100/196609 checkpoints processed
+[2m2026-06-18T00:10:05.036022Z[0m [32m INFO[0m Progress: 200/196609 checkpoints processed
+[2m2026-06-18T00:10:32.131281Z[0m [32m INFO[0m Progress: 300/196609 checkpoints processed
+[2m2026-06-18T00:10:36.743228Z[0m [32m INFO[0m Progress: 400/196609 checkpoints processed
+[2m2026-06-18T00:10:58.901675Z[0m [32m INFO[0m Progress: 500/196609 checkpoints processed
+[2m2026-06-18T00:11:07.582098Z[0m [32m INFO[0m Progress: 600/196609 checkpoints processed
+[2m2026-06-18T00:11:26.222473Z[0m [32m INFO[0m Progress: 700/196609 checkpoints processed
+[2m2026-06-18T00:11:40.988907Z[0m [32m INFO[0m Progress: 800/196609 checkpoints processed
+[2m2026-06-18T00:11:56.459478Z[0m [32m INFO[0m Progress: 900/196609 checkpoints processed
+[2m2026-06-18T00:12:13.255907Z[0m [32m INFO[0m Progress: 1000/196609 checkpoints processed
+[2m2026-06-18T00:12:24.593371Z[0m [32m INFO[0m Progress: 1100/196609 checkpoints processed
+[2m2026-06-18T00:12:40.910138Z[0m [32m INFO[0m Progress: 1200/196609 checkpoints processed
+[2m2026-06-18T00:12:57.323193Z[0m [32m INFO[0m Progress: 1300/196609 checkpoints processed
+[2m2026-06-18T00:13:16.394117Z[0m [32m INFO[0m Progress: 1400/196609 checkpoints processed
+[2m2026-06-18T00:13:36.021403Z[0m [32m INFO[0m Progress: 1500/196609 checkpoints processed
