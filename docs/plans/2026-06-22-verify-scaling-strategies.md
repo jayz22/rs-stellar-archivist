@@ -3,10 +3,10 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development
 > or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax.
 
-**Goal:** Implement five **mutually-exclusive** candidate fixes (A–E) for the verify-mode
+**Goal:** Implement six **mutually-exclusive** candidate fixes (A–F) for the verify-mode
 scaling bottleneck, **each on its own branch off a common base**, then run one benchmark
 suite that compares them on correctness, core usage, scan-verify (multi-L10), and
-scan-no-verify.
+scan-no-verify — followed by a composition/productionization step (Task G).
 
 **Architecture:** Five sibling branches share base commit **`d0266b2`** (HEAD of
 `perf-verify-speedup` *excluding* the uncommitted Task-A prototype). Each branch is a
@@ -29,16 +29,21 @@ production async-decode baseline (`verify.rs`).
 
 ---
 
-## The five strategies (mutually exclusive; each its own branch)
+## The six strategies (mutually exclusive; each its own branch)
 
-| branch | idea | moves off the orchestration task | leaves on it | full fix? |
+| branch | idea | moves off the orchestration task | leaves on it | predicted |
 |---|---|---|---|---|
-| `vs/a-spawn-checkpoint` | spawn each checkpoint | *everything* per-cp incl. `verify_and_release` | iteration only | **yes** |
-| `vs/b-spawn-file` | spawn each file | feed + decode + parse + hash | iteration, HAS discovery, `verify_and_release` | mostly |
-| `vs/c-spawn-blocking` | decode on tokio blocking pool | feed + decode + parse (bucket & xdr) | `verify_and_release` | partial |
-| `vs/d-rayon` | decode on a rayon pool | decode + parse (bucket & xdr) | feed, `verify_and_release` | partial |
-| `vs/e-parse-in-task` | parse+hash inside the spawned decode task | XDR parse + hash | feed, `verify_and_release` | partial |
+| `vs/a-spawn-checkpoint` | spawn each checkpoint | *everything* per-cp incl. `verify_and_release` | iteration only | **full** (→ saturation, modulo manager `Mutex`) |
+| `vs/b-spawn-file` | spawn each file | feed + decode + XDR-parse + hash (per file) | iteration, HAS discovery, `verify_and_release` | **near-full** |
+| `vs/c-spawn-blocking` | **decode** on tokio blocking pool | gzip decode + bucket hash | feed-coord, **XDR parse+hash**, `verify_and_release` | **plateau** if parse dominates (decode discriminator) |
+| `vs/d-rayon` | **decode** on a rayon pool | gzip decode + bucket hash | feed-coord, **XDR parse+hash**, `verify_and_release` | **plateau** like C (decode discriminator) |
+| `vs/e-parse-in-task` | fuse parse+hash into the spawned decode task | gzip decode + XDR parse + hash | feed-coord, `verify_and_release` | near-full unless feed-bound |
+| `vs/f-parse-spawn-blocking` | offload only the **sync parse** (async decode unchanged) | XDR parse + hash | feed-coord, `verify_and_release` | near-full (parse discriminator) |
 
+**C/D vs F are the decode-vs-parse discriminators** (A1/A5): C/D move only the *decode*
+(the XDR parse+hash — the §9.3 hotspot — stays on the orchestration task), so they're
+predicted to plateau where the base does; F moves only the *parse* (decode stays async-
+spawned). If F lifts cores and C/D don't, XDR parse+hash is the cap, as §9.3 predicts.
 The benchmark measures whether each moves enough off the serial task to saturate cores.
 
 ---
@@ -58,16 +63,16 @@ git stash push -- src/pipeline.rs        # or: git restore src/pipeline.rs
 git rev-parse --short HEAD                # expect d0266b2 (the shared base)
 ```
 
-- [ ] **Step 2: Create the five branches off the base (use worktrees for parallel builds)**
+- [ ] **Step 2: Create the six branches off the base (use worktrees for parallel builds)**
 
 ```bash
 BASE=d0266b2
-for b in a-spawn-checkpoint b-spawn-file c-spawn-blocking d-rayon e-parse-in-task; do
+for b in a-spawn-checkpoint b-spawn-file c-spawn-blocking d-rayon e-parse-in-task f-parse-spawn-blocking; do
   git worktree add -b "vs/$b" "../vs-$b" "$BASE"
 done
 git worktree list
 ```
-Expected: five worktrees `../vs-a-spawn-checkpoint` … `../vs-e-parse-in-task`, each at `vs/<b>`.
+Expected: six worktrees `../vs-a-spawn-checkpoint` … `../vs-f-parse-spawn-blocking`, each at `vs/<b>`.
 
 > Each task below is performed **in its own worktree/branch**. The base already has the
 > instrumentation, so `DecodeGuard` / `SA_RT_METRICS` work everywhere. All verify runs use
@@ -135,10 +140,18 @@ Replace the `&self` signature and `for_each_concurrent` body (`pipeline.rs:310`)
             .for_each_concurrent(concurrency, |ck| {
                 let me = Arc::clone(&self);
                 async move {
+                    // A8: do NOT swallow a panic. In the base, a panic in
+                    // process_checkpoint propagates through for_each_concurrent and
+                    // aborts the run; preserve that so the correctness gate can't pass
+                    // over a panicked checkpoint. (A hash mismatch is a recorded
+                    // failure, not a panic — so a JoinError here is a real bug.)
                     if let Err(e) =
                         tokio::spawn(async move { me.process_checkpoint(ck).await }).await
                     {
-                        error!("checkpoint {ck} task panicked: {e}");
+                        if e.is_panic() {
+                            std::panic::resume_unwind(e.into_panic());
+                        }
+                        error!("checkpoint {ck} task cancelled: {e}");
                     }
                     let done =
                         completed_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
@@ -198,7 +211,9 @@ decode + parse run per-file in parallel; the checkpoint task does HAS discovery 
 `verify_and_release`.
 
 **Files:** Modify `src/pipeline.rs` (`run`, `run_checkpoints`, `Pipeline` struct + `new`,
-`process_checkpoint`, add `process_file_owned`); `src/repair_operation.rs`.
+`process_checkpoint`); `src/repair_operation.rs` (wrap the `run_checkpoints` caller in
+`Arc` only — `process_file`/`process_history_and_buckets` keep `&self`, so their repair
+call sites are untouched).
 
 - [ ] **Step 1: Arc plumbing (same as A Steps 1–3, but `run_checkpoints` does NOT spawn the checkpoint)**
 
@@ -256,50 +271,63 @@ In `Pipeline::new`, before the `Self { … }` literal:
 ```
 and add `file_semaphore,` to the literal.
 
-- [ ] **Step 3: Convert `process_checkpoint` + `process_file` to spawn per file**
+- [ ] **Step 3: Convert only `process_checkpoint` to `Arc<Self>` + spawn each file**
 
-`process_checkpoint` becomes `self: Arc<Self>` and spawns each file via a `JoinSet`.
-Replace `process_checkpoint` (`pipeline.rs:378`) with:
+**A2 (verified):** `process_file` is called by repair (`repair_operation.rs:447`) and
+internally (`pipeline.rs:382,387,493`); `process_history_and_buckets` is called by repair
+(`repair_operation.rs:445`). So **do NOT change `process_file`'s signature** and **do NOT
+delete `process_history_and_buckets`** — that would break the build and the repair path.
+Instead, keep both as `&self` and **acquire the file-semaphore permit in the spawn
+wrapper** (mirroring A's "spawn + own an Arc" shape). Only `process_checkpoint` becomes
+`Arc<Self>`. Replace `process_checkpoint` (`pipeline.rs:378`) with:
 
 ```rust
     pub async fn process_checkpoint(self: Arc<Self>, checkpoint: u32) {
         use tokio::task::JoinSet;
         let mut set: JoinSet<()> = JoinSet::new();
 
+        // Helper closure shape: acquire a permit, then spawn process_file (which stays &self,
+        // called via the Arc deref). The permit is held for the task's lifetime.
+        let mut spawn_file = |me: &Arc<Self>, set: &mut JoinSet<()>, path: String| {
+            let me = Arc::clone(me);
+            let sem = self.file_semaphore.clone();
+            set.spawn(async move {
+                let _permit = sem.acquire_owned().await.unwrap();
+                me.process_file(checkpoint, path).await;
+            });
+        };
+
         for cat in ["ledger", "transactions", "results"] {
-            let me = Arc::clone(&self);
-            let path = checkpoint_path(cat, checkpoint);
-            set.spawn(async move { me.process_file(checkpoint, path).await });
+            spawn_file(&self, &mut set, checkpoint_path(cat, checkpoint));
         }
         if !self.config.skip_optional {
-            let me = Arc::clone(&self);
-            let path = checkpoint_path("scp", checkpoint);
-            set.spawn(async move { me.process_file(checkpoint, path).await });
+            spawn_file(&self, &mut set, checkpoint_path("scp", checkpoint));
         }
         if !self.config.skip_history_and_buckets {
+            // HAS fetch + history write + bucket discovery stay inline (cheap; gate the spawns).
             if let Some((state, buffer)) = self.fetch_history_file_state(checkpoint).await {
                 let history_path = checkpoint_path("history", checkpoint);
                 self.process_history_file(checkpoint, &history_path, buffer).await;
                 let bucket_paths: Vec<String> = {
                     let mut cache = self.bucket_lru.lock().unwrap();
-                    state
-                        .buckets()
-                        .iter()
-                        .filter_map(|b| {
-                            (cache.put(b.clone(), ()).is_none())
-                                .then(|| bucket_path(b).ok())
-                                .flatten()
-                        })
+                    state.buckets().iter()
+                        .filter_map(|b| (cache.put(b.clone(), ()).is_none())
+                            .then(|| bucket_path(b).ok()).flatten())
                         .collect()
                 };
                 for path in bucket_paths {
-                    let me = Arc::clone(&self);
-                    set.spawn(async move { me.process_file(checkpoint, path).await });
+                    spawn_file(&self, &mut set, path);
                 }
             }
         }
 
-        while set.join_next().await.is_some() {}
+        // A8: propagate a panicked file task (don't swallow); match base abort semantics.
+        while let Some(res) = set.join_next().await {
+            if let Err(e) = res {
+                if e.is_panic() { std::panic::resume_unwind(e.into_panic()); }
+                error!("file task cancelled in cp {checkpoint}: {e}");
+            }
+        }
 
         if let Some(manager) = &self.verification_manager {
             manager.verify_and_release(checkpoint);
@@ -307,20 +335,12 @@ Replace `process_checkpoint` (`pipeline.rs:378`) with:
     }
 ```
 
-`process_file` becomes `self: Arc<Self>` and acquires a permit. Replace `process_file`
-(`pipeline.rs:540`)'s signature/body wrapper:
-
-```rust
-    pub(crate) async fn process_file(self: Arc<Self>, checkpoint: u32, path: String) {
-        let _permit = self.file_semaphore.clone().acquire_owned().await;
-        // ... unchanged body: with_retries(process_object) + record stats ...
-    }
-```
-
-> The old per-checkpoint helpers `process_checkpoint`/`process_history_and_buckets` used
-> `join_all`; this branch inlines bucket discovery into `process_checkpoint` and removes
-> `process_buckets`/`process_history_and_buckets` if now unused (delete dead code — clean
-> implementation). `process_history_file` stays `&self` (called inline before the spawns).
+`process_file` and `process_history_file` keep their existing `&self` signatures
+(unchanged bodies). **`fetch_history_file_state`** is the existing private helper used by
+`process_history_and_buckets`; reuse it (don't duplicate). Do **not** delete
+`process_buckets`/`process_history_and_buckets` — repair depends on the latter. (If B's
+inlined discovery duplicates `process_history_and_buckets`'s logic, leave the duplication
+on this experiment branch, or share a tiny helper — but keep the method repair calls.)
 
 - [ ] **Step 4: Build + correctness gate**
 
@@ -343,50 +363,57 @@ git commit -m "perf(verify): spawn per file (Strategy B)"
 
 ## Task C: branch `vs/c-spawn-blocking` — decode on the blocking pool
 
-**Idea:** Run feed + gzip + parse/hash on tokio's blocking pool via `spawn_blocking`, for
-both bucket and XDR files (feed via `SyncIoBridge` inside the blocking task). No pipeline
-changes — modify the decode functions directly.
+**Idea (A3):** Read the compressed bytes **async** (off the blocking pool), then
+`spawn_blocking` only the **pure-CPU gzip decode + hash** over the owned buffer, bounded by
+a `Semaphore(~nproc)`. Do **not** use `SyncIoBridge` inside `spawn_blocking` — that
+`block_on`s network I/O on a blocking-pool thread, the exact 545-parked-threads
+anti-pattern the investigation observed (§9.4). This makes C symmetric with D (both:
+async read-all → CPU pool), so they differ *only* in the pool (tokio-blocking vs rayon) —
+a clean comparison. No pipeline changes; modify the decode functions directly.
 
 **Files:** Modify `src/verify.rs` (`verify_bucket_stream`), `src/xdr_verify.rs`
-(`decompress_to_buffer` or the decompress path), `Cargo.toml` (tokio-util `io-util`).
+(`decompress_to_buffer`). **Keep** `verify_bucket_maybe_write` and
+`decompress_and_write_internal` — the mirror verify-on-write path uses them
+(`verify.rs:166` `verify_and_write_bucket`; `xdr_verify.rs:1192` `verify_and_write_xdr`).
+`tokio-util` already has `io-util` (`Cargo.toml:69`) — no Cargo change needed. Add a
+module-level decode semaphore.
 
-- [ ] **Step 1: Replace the async bucket decode with the sync blocking version — `src/verify.rs`**
+- [ ] **Step 1: Add a bounded decode gate (both files share the cap)**
 
-Replace `verify_bucket_stream`'s body (it currently delegates to the async
-`verify_bucket_maybe_write`) with a `spawn_blocking` decode, and delete the now-unused
-async `verify_bucket_maybe_write` *for the scan path* (keep it only if the mirror path
-still needs it — check callers with `grep -n verify_bucket_maybe_write src`):
+In `src/verify.rs` (and reference it from `xdr_verify.rs`):
 
 ```rust
-use tokio_util::io::SyncIoBridge;
-use tokio_util::compat::FuturesAsyncReadCompatExt;
-use std::io::Read as _;
-const SYNC_READ_BUF: usize = 256 * 1024;
+use std::sync::OnceLock;
+use tokio::sync::Semaphore;
+/// Bound concurrent CPU decode jobs to ~cores so the blocking pool isn't oversubscribed.
+pub(crate) fn decode_sem() -> &'static Semaphore {
+    static S: OnceLock<Semaphore> = OnceLock::new();
+    S.get_or_init(|| Semaphore::new(num_cpus::get().max(1)))   // or std::thread::available_parallelism
+}
+```
 
+- [ ] **Step 2: Bucket — async read, then `spawn_blocking` CPU decode+hash — `src/verify.rs`**
+
+Replace `verify_bucket_stream`'s body:
+
+```rust
 pub async fn verify_bucket_stream(path: &str, reader: Reader) -> Result<(), StorageError> {
     let _g = crate::phase!(crate::metrics::Phase::BucketStream);
     let expected = bucket_hash_from_path(path)
         .ok_or_else(|| StorageError::fatal(format!("Invalid bucket path: {}", path)))?;
-    let async_read = reader
-        .into_futures_async_read(..)
-        .await
+    let compressed = reader.read(..).await                       // ASYNC I/O (not on the pool)
         .map_err(|e| from_opendal_error(e, &format!("Failed to read {}", path)))?
-        .compat();
-    let bridge = SyncIoBridge::new(async_read);
+        .to_vec();
     let path_owned = path.to_string();
+    let _permit = decode_sem().acquire().await.unwrap();         // bound to ~nproc
     let (actual, n) = tokio::task::spawn_blocking(move || {
         let _dg = crate::metrics::DecodeGuard::enter();
-        let mut dec =
-            flate2::read::GzDecoder::new(std::io::BufReader::with_capacity(SYNC_READ_BUF, bridge));
+        use std::io::Read as _;
+        let mut dec = flate2::read::GzDecoder::new(std::io::Cursor::new(compressed));
         let mut hasher = Sha256::new();
         let mut buf = vec![0u8; HASH_BUFFER_SIZE];
         let mut n: u64 = 0;
-        loop {
-            let k = dec.read(&mut buf)?;
-            if k == 0 { break; }
-            hasher.update(&buf[..k]);
-            n += k as u64;
-        }
+        loop { let k = dec.read(&mut buf)?; if k == 0 { break; } hasher.update(&buf[..k]); n += k as u64; }
         Ok::<_, std::io::Error>((hex::encode(hasher.finalize()), n))
     })
     .await
@@ -394,8 +421,7 @@ pub async fn verify_bucket_stream(path: &str, reader: Reader) -> Result<(), Stor
     .map_err(|e| StorageError::retry(format!("decompress failed {}: {}", path_owned, e)))?;
     if actual != expected {
         return Err(StorageError::fatal(format!(
-            "Hash mismatch for {}: expected {}, got {}", path, expected, actual
-        )));
+            "Hash mismatch for {}: expected {}, got {}", path, expected, actual)));
     }
     crate::metrics::add_bytes(crate::metrics::Phase::BucketStream, n);
     crate::metrics::record_file(n);
@@ -403,54 +429,43 @@ pub async fn verify_bucket_stream(path: &str, reader: Reader) -> Result<(), Stor
 }
 ```
 
-- [ ] **Step 2: Replace the async XDR decode with `spawn_blocking` — `src/xdr_verify.rs`**
+- [ ] **Step 3: XDR — async read, then `spawn_blocking` CPU decode — `src/xdr_verify.rs`**
 
-Replace `decompress_to_buffer`'s body (the function `parse_*_stream` already calls) with a
-`spawn_blocking` gzip-to-`Vec`, and delete the now-unused async `decompress_and_write_internal`
-*if no other caller* (the mirror write path may still use it — check
-`grep -n decompress_and_write_internal src`):
+Replace `decompress_to_buffer`'s body (the parse stays on the caller after `.await` — C
+isolates the *decode* offload; if C still plateaus, that favors the parse hypothesis, see
+Strategy F):
 
 ```rust
 async fn decompress_to_buffer(path: &str, reader: Reader) -> Result<Vec<u8>, StorageError> {
-    use tokio_util::io::SyncIoBridge;
-    use tokio_util::compat::FuturesAsyncReadCompatExt;
-    use std::io::Read as _;
-    let async_read = reader
-        .into_futures_async_read(..)
-        .await
+    let compressed = reader.read(..).await
         .map_err(|e| from_opendal_error(e, &format!("read {}", path)))?
-        .compat();
-    let bridge = SyncIoBridge::new(async_read);
+        .to_vec();
     let p = path.to_string();
+    let _permit = crate::verify::decode_sem().acquire().await.unwrap();
     tokio::task::spawn_blocking(move || {
         let _dg = crate::metrics::DecodeGuard::enter();
-        let mut dec = flate2::read::GzDecoder::new(std::io::BufReader::with_capacity(256 * 1024, bridge));
+        use std::io::Read as _;
+        let mut dec = flate2::read::GzDecoder::new(std::io::Cursor::new(compressed));
         let mut out = Vec::new();
-        dec.read_to_end(&mut out)
-            .map_err(|e| StorageError::retry(format!("decompress {}: {}", p, e)))?;
-        Ok::<_, StorageError>(out)
+        dec.read_to_end(&mut out).map(|_| out)
     })
     .await
     .map_err(|e| StorageError::fatal(format!("decompress task panicked {}: {}", path, e)))?
+    .map_err(|e| StorageError::retry(format!("decompress {}: {}", p, e)))
 }
 ```
 
-(The XDR *parse* stays on the caller after `.await` — this branch isolates the *decode*
-offload. The parse is light vs gzip; if C still pins, that's a finding favoring A/B/E.)
-
-- [ ] **Step 3: Cargo.toml — ensure `tokio-util` has `io-util`**
-
-```toml
-tokio-util = { version = "0.7", features = ["io", "io-util", "compat"] }
-```
+> `Reader::read(..)` returns `opendal::Buffer`; `.to_vec()` → `Vec<u8>` (confirm in opendal
+> 0.55, else collect `into_stream`). This buffers the whole compressed file — same memory
+> tradeoff as D, captured by the benchmark's `peak_rss_mb` column (Task F / A7).
 
 - [ ] **Step 4: Build + correctness gate** (same commands as Task A Step 4; expect `239/0`).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/verify.rs src/xdr_verify.rs Cargo.toml
-git commit -m "perf(verify): decode on tokio blocking pool (Strategy C)"
+git add src/verify.rs src/xdr_verify.rs
+git commit -m "perf(verify): decode on tokio blocking pool, async feed (Strategy C)"
 ```
 
 ---
@@ -573,82 +588,88 @@ git commit -m "perf(verify): rayon decode pool (Strategy D)"
 
 ## Task E: branch `vs/e-parse-in-task` — parse+hash inside the spawned decode task
 
-**Idea:** Smallest change. Move the XDR parse+hash *into* the already-spawned decode task
-so the orchestration task only feeds. (Buckets already hash in their spawned task.)
+**Idea:** Move the XDR parse+hash *into* the already-spawned decode task so the
+orchestration task only feeds. (Buckets already hash in their spawned task.) **A4:** use
+**one generic helper** instead of three copies of the stream+channel+spawn boilerplate.
 
-**Files:** Modify `src/xdr_verify.rs` (`parse_ledger_header_stream`,
-`parse_transactions_stream`, `parse_results_stream`).
+**Files:** Modify `src/xdr_verify.rs` (add `decompress_then`; rewrite
+`parse_ledger_header_stream`, `parse_transactions_stream`, `parse_results_stream` as
+one-liners over it).
 
-- [ ] **Step 1: `parse_transactions_stream` — fuse parse into the spawned task**
+- [ ] **Step 1: Add the generic `decompress_then` helper — `src/xdr_verify.rs`**
+
+Decodes in the spawned task and runs the caller's parse closure **inside** that task, so
+both gzip and parse+hash leave the orchestration task; the caller only feeds:
+
+```rust
+/// Stream `reader` → mpsc → a spawned task that gzip-decodes to a buffer and runs `parse`
+/// on it. The feed loop runs on the caller; the spawned task does decode + parse+hash.
+async fn decompress_then<T, F>(path: &str, reader: Reader, parse: F) -> Result<T, StorageError>
+where
+    T: Send + 'static,
+    F: FnOnce(&[u8]) -> Result<T, StorageError> + Send + 'static,
+{
+    let stream = reader
+        .into_stream(..)
+        .await
+        .map_err(|e| from_opendal_error(e, &format!("stream {}", path)))?;
+    let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(CHANNEL_CAPACITY);
+    let path_owned = path.to_string();
+    let task = tokio::spawn(async move {
+        let _dg = crate::metrics::DecodeGuard::enter();
+        let sr = StreamReader::new(
+            tokio_stream::wrappers::ReceiverStream::new(rx).map(Ok::<_, std::io::Error>));
+        let mut dec = GzipDecoder::new(BufReader::new(sr));
+        let mut decompressed = Vec::new();
+        dec.read_to_end(&mut decompressed)
+            .await
+            .map_err(|e| StorageError::retry(format!("decompress {}: {}", path_owned, e)))?;
+        parse(&decompressed)
+    });
+    futures_util::pin_mut!(stream);
+    while let Some(chunk) = stream.next().await {
+        let buf = chunk.map_err(|e| from_opendal_error(e, &format!("read {}", path)))?;
+        for c in buf {
+            if tx.send(c).await.is_err() {
+                break;
+            }
+        }
+    }
+    drop(tx);
+    task.await
+        .map_err(|e| StorageError::fatal(format!("parse task panicked {}: {}", path, e)))?
+}
+```
+
+- [ ] **Step 2: Rewrite the three `parse_*_stream` as one-liners over the helper**
+
+Each becomes a single `decompress_then(...)` call with its parse closure (match each
+function's existing return type — e.g. `parse_ledger_header_stream`'s real type; do not
+guess):
 
 ```rust
 pub async fn parse_transactions_stream(path: &str, reader: Reader) -> Result<BTreeMap<u32, Hash>, StorageError> {
     let cp = history_format::checkpoint_from_path(path);
-    let stream = reader.into_stream(..).await
-        .map_err(|e| from_opendal_error(e, &format!("stream {}", path)))?;
-    let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(CHANNEL_CAPACITY);
-    let path_owned = path.to_string();
-    let task = tokio::spawn(async move {
-        let _dg = crate::metrics::DecodeGuard::enter();
-        let sr = StreamReader::new(
-            tokio_stream::wrappers::ReceiverStream::new(rx).map(Ok::<_, std::io::Error>));
-        let mut dec = GzipDecoder::new(BufReader::new(sr));
-        let mut decompressed = Vec::new();
-        dec.read_to_end(&mut decompressed).await
-            .map_err(|e| StorageError::retry(format!("decompress {}: {}", path_owned, e)))?;
-        parse_transaction_entries_for_checkpoint(&decompressed, cp)   // CPU parse, now in-task
-    });
-    futures_util::pin_mut!(stream);
-    while let Some(chunk) = stream.next().await {
-        let buf = chunk.map_err(|e| from_opendal_error(e, &format!("read {}", path)))?;
-        for c in buf { if tx.send(c).await.is_err() { break; } }
-    }
-    drop(tx);
-    task.await.map_err(|e| StorageError::fatal(format!("parse task panicked {}: {}", path, e)))?
+    decompress_then(path, reader, move |b| parse_transaction_entries_for_checkpoint(b, cp)).await
 }
-```
 
-- [ ] **Step 2: `parse_ledger_header_stream` — same pattern**
-
-```rust
-pub async fn parse_ledger_header_stream(path: &str, reader: Reader) -> Result<LedgerHeaderData, StorageError> {
+pub async fn parse_ledger_header_stream(path: &str, reader: Reader) -> Result</* real type */, StorageError> {
     let cp = history_format::checkpoint_from_path(path);
-    let stream = reader.into_stream(..).await
-        .map_err(|e| from_opendal_error(e, &format!("stream {}", path)))?;
-    let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(CHANNEL_CAPACITY);
-    let path_owned = path.to_string();
-    let task = tokio::spawn(async move {
-        let _dg = crate::metrics::DecodeGuard::enter();
-        let sr = StreamReader::new(
-            tokio_stream::wrappers::ReceiverStream::new(rx).map(Ok::<_, std::io::Error>));
-        let mut dec = GzipDecoder::new(BufReader::new(sr));
-        let mut decompressed = Vec::new();
-        dec.read_to_end(&mut decompressed).await
-            .map_err(|e| StorageError::retry(format!("decompress {}: {}", path_owned, e)))?;
-        parse_ledger_header_entries_for_checkpoint(&decompressed, cp)
-    });
-    futures_util::pin_mut!(stream);
-    while let Some(chunk) = stream.next().await {
-        let buf = chunk.map_err(|e| from_opendal_error(e, &format!("read {}", path)))?;
-        for c in buf { if tx.send(c).await.is_err() { break; } }
-    }
-    drop(tx);
-    task.await.map_err(|e| StorageError::fatal(format!("parse task panicked {}: {}", path, e)))?
+    decompress_then(path, reader, move |b| parse_ledger_header_entries_for_checkpoint(b, cp)).await
+}
+
+pub async fn parse_results_stream(path: &str, reader: Reader) -> Result<BTreeMap<u32, Hash>, StorageError> {
+    let cp = history_format::checkpoint_from_path(path);
+    decompress_then(path, reader, move |b| parse_result_entries_for_checkpoint(b, cp)).await
 }
 ```
 
-> Use the actual return type of `parse_ledger_header_stream` (check its current signature;
-> shown here as `LedgerHeaderData` — substitute the real type).
+(`parse_scp_stream` has no hashing — leave it as is. Confirm each `parse_*_stream`'s
+current return type and substitute it in the helper's `T`.)
 
-- [ ] **Step 3: `parse_results_stream` — same pattern**
+- [ ] **Step 3: Build + correctness gate** (expect `239/0`).
 
-Identical structure, calling `parse_result_entries_for_checkpoint(&decompressed, cp)` and
-returning `BTreeMap<u32, Hash>` (match the current signature). Write the full body — no
-"same as above".
-
-- [ ] **Step 4: Build + correctness gate** (expect `239/0`).
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add src/xdr_verify.rs
@@ -657,21 +678,75 @@ git commit -m "perf(verify): parse+hash inside the spawned decode task (Strategy
 
 ---
 
-## Task F: Cross-branch benchmark suite
+## Task F: branch `vs/f-parse-spawn-blocking` — offload only the sync parse
+
+**Idea (A5):** Keep the async decode unchanged; offload **only** the synchronous
+`parse_*_entries_for_checkpoint` to `spawn_blocking`, bounded by a `Semaphore(~nproc)`
+(it's CPU on the 512-thread blocking pool). Smallest change that moves the §9.3 hotspot
+(XDR parse + tx/result hash) off the orchestration task — and the clean **parse
+discriminator** complementing C/D's **decode discriminator**: if F lifts cores and C/D
+don't, XDR parse+hash is the cap.
+
+**Files:** Modify `src/xdr_verify.rs` only.
+
+- [ ] **Step 1: Add a bounded parse gate + wrap the sync parse**
+
+```rust
+use std::sync::OnceLock;
+use tokio::sync::Semaphore;
+fn parse_sem() -> &'static Semaphore {
+    static S: OnceLock<Semaphore> = OnceLock::new();
+    S.get_or_init(|| Semaphore::new(std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8)))
+}
+
+pub async fn parse_transactions_stream(path: &str, reader: Reader) -> Result<BTreeMap<u32, Hash>, StorageError> {
+    let decompressed = decompress_to_buffer(path, reader).await?;     // async decode, UNCHANGED
+    let cp = history_format::checkpoint_from_path(path);
+    let _permit = parse_sem().acquire().await.unwrap();
+    let p = path.to_string();
+    tokio::task::spawn_blocking(move || parse_transaction_entries_for_checkpoint(&decompressed, cp))
+        .await
+        .map_err(|e| StorageError::fatal(format!("parse task panicked {}: {}", p, e)))?
+}
+```
+
+- [ ] **Step 2: Same for `parse_ledger_header_stream` and `parse_results_stream`**
+
+Identical wrapper around `parse_ledger_header_entries_for_checkpoint` /
+`parse_result_entries_for_checkpoint` (match each real return type). Leave
+`parse_scp_stream` and `decompress_to_buffer` untouched.
+
+- [ ] **Step 3: Build + correctness gate** (expect `239/0`).
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/xdr_verify.rs
+git commit -m "perf(verify): offload sync parse to spawn_blocking (Strategy F)"
+```
+
+---
+
+## Task BENCH: Cross-branch benchmark suite
 
 **Files:** Create `scripts/perf/bench_strategies.sh` (on the base branch / each worktree —
 keep one canonical copy). Build each branch into a distinctly-named binary, then sweep.
 
-**Test matrix.** For each binary `B` in `{base, a, b, c, d, e}`:
+**Test matrix.** For each binary `B` in `{base, a, b, c, d, e, f}`:
 1. **Full test suite** (correctness floor): `cargo test --release` on the branch — must pass.
 2. **Correctness vs base:** completing `scan --verify` on a bounded range
    (`SA_LOW_C..SA_HIGH_C`, default ~1000 cp), `--report`; must match base's
    `(succeeded, failed, retries)` **and** the sorted broken-file set (`broken_sig`).
 3. **Core usage (verify, multi-L10):** `scan --verify` on `SA_LOW..SA_HIGH`
    (default 3×L10 `50463103..63046015`) for `SA_WINDOW` s; capture RTM `busy_cores`
-   mean/max + `active_decodes`. Plus the bounded-range wall (throughput number).
+   mean/max. **Partial-run sample** (we `kill -9` after the window) — good for *relative*
+   ranking, not a completion average; the bounded-range `verify_wall` is the completion
+   metric. Also capture **peak RSS** (A7: C and D buffer whole compressed files; their
+   memory cost is otherwise invisible) from the `perf-metrics` `timeseries.csv`.
 4. **No-verify regression (same multi-L10 range):** `scan` (no `--verify`) for `SA_WINDOW`
-   s; capture cores + behavior. Must not regress vs base.
+   s; capture cores. Must not regress vs base.
+5. **Panic gate (A8):** any `task panicked` / `task cancelled` line in a run's stderr
+   fails that binary — a `JoinError` is a real bug, never a recorded hash mismatch.
 
 - [ ] **Step 1: Build every branch's instrumented binary**
 
@@ -682,10 +757,10 @@ mkdir -p bin
 ( cd /home/jay/Projects/rs-stellar-archivist-verifyperf && \
   RUSTFLAGS="--cfg tokio_unstable" cargo build --release --features perf-metrics --quiet && \
   cp target/release/stellar-archivist bin/sa-base )
-for b in a-spawn-checkpoint b-spawn-file c-spawn-blocking d-rayon e-parse-in-task; do
+for b in a-spawn-checkpoint b-spawn-file c-spawn-blocking d-rayon e-parse-in-task f-parse-spawn-blocking; do
   ( cd "../vs-$b" && RUSTFLAGS="--cfg tokio_unstable" cargo build --release --features perf-metrics --quiet \
     && cp target/release/stellar-archivist "/home/jay/Projects/rs-stellar-archivist-verifyperf/bin/sa-${b%%-*}" )
-done   # → bin/sa-base, sa-a, sa-b, sa-c, sa-d, sa-e
+done   # → bin/sa-base, sa-a … sa-f
 ```
 
 - [ ] **Step 2: Create `scripts/perf/bench_strategies.sh`**
@@ -697,24 +772,29 @@ done   # → bin/sa-base, sa-a, sa-b, sa-c, sa-d, sa-e
 set -o pipefail
 export PATH="$HOME/.cargo/bin:$PATH"
 ARCHIVE="${SA_ARCHIVE:-http://127.0.0.1:8088}"
-BINS="${SA_BINS:-base a b c d e}"; PREFIX="${SA_PREFIX:-bin/sa-}"
+BINS="${SA_BINS:-base a b c d e f}"; PREFIX="${SA_PREFIX:-bin/sa-}"
 LOW="${SA_LOW:-50463103}"; HIGH="${SA_HIGH:-63046015}"         # multi-L10
 LOWC="${SA_LOW_C:-62982015}"; HIGHC="${SA_HIGH_C:-63046015}"   # bounded (correctness/wall)
 WINDOW="${SA_WINDOW:-60}"
 OUT="${SA_OUT:-perf-results/maxconc/verifysim/strategies}"; mkdir -p "$OUT"
 cores_of(){ grep '^RTM' "$1" 2>/dev/null | python3 -c "import sys,re;b=[float(re.search(r'busy_cores=([\d.]+)',l).group(1)) for l in sys.stdin if 'busy_cores' in l];print(f'{sum(b)/len(b):.1f}/{max(b):.1f}' if b else 'n/a')"; }
+# A7: peak RSS from the perf-metrics timeseries.csv (cols: t_s,files_done,bytes_done,peak_rss_mb)
+rss_of(){ awk -F, 'NR>1 && $4>m{m=$4} END{printf "%.0f", m+0}' "$1/timeseries.csv" 2>/dev/null; }
 summ(){ python3 -c "import json,sys;d=json.load(open(sys.argv[1]))['summary'];print(d['succeeded'],d['failed'],d['retries'])" "$1" 2>/dev/null; }
 sig(){ python3 -c "import json,sys,hashlib;d=json.load(open(sys.argv[1]));print(hashlib.sha256(repr(sorted((d.get('files') or {}).items())).encode()).hexdigest()[:16])" "$1" 2>/dev/null; }
-printf '%-6s %-18s %-12s %-16s %-12s %-14s\n' bin correctness broken_sig verify_cores verify_wall noverify_cores
+panicked(){ grep -qE 'task (panicked|cancelled)' "$@" 2>/dev/null && echo PANIC || echo ok; }
+printf '%-6s %-18s %-12s %-16s %-10s %-8s %-14s %-6s\n' bin correctness broken_sig verify_cores* verify_wall rss_mb noverify_cores panic
 for k in $BINS; do
   B="${PREFIX}${k}"
   rep="$OUT/${k}.json"; t0=$(date +%s.%N)
   "$B" scan "$ARCHIVE" -c 128 --max-concurrent 128 --verify --skip-optional --low "$LOWC" --high "$HIGHC" --report "$rep" >/dev/null 2>"$OUT/${k}_c.err"
   vw=$(awk -v a=$t0 -v b=$(date +%s.%N) 'BEGIN{printf "%.1f",b-a}')
-  SA_RT_METRICS=1 "$B" scan "$ARCHIVE" -c 128 --max-concurrent 128 --verify --skip-optional --low "$LOW" --high "$HIGH" >/dev/null 2>"$OUT/${k}_v.rtm" & p=$!; sleep "$WINDOW"; kill -9 $p 2>/dev/null
+  # verify multi-L10 window; SA_PERF_OUT captures timeseries.csv (peak RSS) even when killed
+  rm -rf "$OUT/${k}_v"; SA_PERF_OUT="$OUT/${k}_v" SA_RT_METRICS=1 "$B" scan "$ARCHIVE" -c 128 --max-concurrent 128 --verify --skip-optional --low "$LOW" --high "$HIGH" >/dev/null 2>"$OUT/${k}_v.rtm" & p=$!; sleep "$WINDOW"; kill -9 $p 2>/dev/null
   SA_RT_METRICS=1 "$B" scan "$ARCHIVE" -c 128 --max-concurrent 128 --skip-optional --low "$LOW" --high "$HIGH" >/dev/null 2>"$OUT/${k}_n.rtm" & p=$!; sleep "$WINDOW"; kill -9 $p 2>/dev/null
-  printf '%-6s %-18s %-12s %-16s %-12s %-14s\n' "$k" "$(summ "$rep")" "$(sig "$rep")" "$(cores_of "$OUT/${k}_v.rtm")" "$vw" "$(cores_of "$OUT/${k}_n.rtm")"
+  printf '%-6s %-18s %-12s %-16s %-10s %-8s %-14s %-6s\n' "$k" "$(summ "$rep")" "$(sig "$rep")" "$(cores_of "$OUT/${k}_v.rtm")" "$vw" "$(rss_of "$OUT/${k}_v")" "$(cores_of "$OUT/${k}_n.rtm")" "$(panicked "$OUT/${k}_c.err" "$OUT/${k}_v.rtm" "$OUT/${k}_n.rtm")"
 done
+# * verify_cores is a partial-run (kill -9 after $WINDOW) sample for ranking, not a completion average.
 ```
 
 - [ ] **Step 3: Run + record**
@@ -726,37 +806,93 @@ scripts/perf/bench_strategies.sh | tee perf-results/maxconc/verifysim/strategies
 
 - [ ] **Step 4: Acceptance criteria**
 
-- **Correctness (hard gate):** every binary's `cargo test` passes, and `correctness` +
-  `broken_sig` match `base`. Any mismatch → reject that strategy.
-- **Verify scaling:** rank by `verify_cores` mean + bounded `verify_wall`. A/B expected to
-  saturate; C/D/E reveal whether residual on-main work (feed / `verify_and_release`) caps
-  them.
+- **Correctness (hard gate):** every binary's `cargo test` passes; `correctness` +
+  `broken_sig` match `base`; and `panic == ok`. Any mismatch/PANIC → reject that strategy.
+- **Verify scaling:** rank by `verify_cores` mean + bounded `verify_wall`. Predicted
+  (§"six strategies" + amendment ranking): **A ≈ B** (full) saturate; **E ≈ F** (parse
+  offloaded, single-task feed remains) near-full unless feed-bound; **C ≈ D** (decode
+  offloaded, XDR parse+hash remains) plateau ~base. If C/D do *not* plateau, that refutes
+  the §9.3 "parse is heavy" model — a valuable finding.
 - **No-verify:** `noverify_cores` must match `base` within noise (no regression).
-- **Tie-breakers:** code cleanliness (lines changed), memory (D buffers compressed bytes),
-  and `XdrVerificationManager` `Mutex` contention (a plateau < 32 cores with `runnable_q>0`
-  → lock contention → follow-up sharding task).
+- **Memory:** compare `rss_mb` — C and D buffer whole compressed files (up to ~2.4 GB ×
+  in-flight); A/B/E/F stream. A large `rss_mb` for C/D is the cost to weigh against their
+  (predicted small) scaling benefit.
+- **Tie-breakers:** code cleanliness (lines changed), memory, and the
+  `XdrVerificationManager` `Mutex` (a plateau < 32 cores with `runnable_q>0` → lock
+  contention → Task G).
 
 - [ ] **Step 5: Commit the harness + results (on the base branch)**
 
 ```bash
 git add scripts/perf/bench_strategies.sh
 git add -f perf-results/maxconc/verifysim/strategies/
-git commit -m "perf(verify): cross-branch benchmark suite for strategies A–E + results"
+git commit -m "perf(verify): cross-branch benchmark suite for strategies A–F + results"
+```
+
+---
+
+## Task G: compose the winner + shard the manager `Mutex` (productionization)
+
+**Why (A6):** the mutually-exclusive branches answer *attribution* ("which lever helps
+most") but not the *production* question, which is likely a **composition** — e.g. the
+best distribution winner (A/B) *plus* a parse offload (E/F) *plus* removing the next
+bottleneck. The investigation itself flags that next bottleneck: once decode parallelizes,
+the global `XdrVerificationManager` `Mutex` (`record_*` + `verify_and_release`,
+`pipeline.rs:404`) may contend at 32-way (§9.6).
+
+**Files:** branch `vs/g-compose` off the **benchmark winner's** branch; modify
+`src/xdr_verify.rs` (`XdrVerificationManager`).
+
+- [ ] **Step 1: Gate on the observed signal**
+
+Only do this if the winning branch plateaus **< 32 cores with `runnable_q > 0`** in the
+benchmark (CPU spinning on the lock, not starved). If it already saturates, record that
+and stop — no sharding needed.
+
+- [ ] **Step 2: Shard `pending` (and friends) by `cp % N`**
+
+Replace `pending: Mutex<HashMap<u32, PendingCheckpoint>>` (`xdr_verify.rs:171`) with
+`pending: [Mutex<HashMap<u32, PendingCheckpoint>>; N]` (N = e.g. 16), keyed by `cp % N`,
+or use `DashMap`. Ensure `verify_and_release` does **remove-under-lock then
+compute-outside-lock** (don't hold the shard lock across the CPU verify). Keep `boundaries`
+/ `errors` correctness (those are touched once per cp / on error — lower contention; shard
+only if measured).
+
+- [ ] **Step 3: If still feed-bound, layer E/F's parse offload onto the winner**
+
+If the distribution winner still shows single-task **feed** headroom (`stream.next` +
+per-chunk `tx.send` for ~800 files on the orchestration task), compose E or F's
+parse-offload on top and re-measure.
+
+- [ ] **Step 4: Re-run the benchmark for `g` vs the single-strategy winners; record**
+
+```bash
+# build vs/g-compose → bin/sa-g, then:
+SA_BINS="base a b g" scripts/perf/bench_strategies.sh | tee -a perf-results/maxconc/verifysim/strategies/summary.txt
+git add -f perf-results/maxconc/verifysim/strategies/ ; git commit -m "perf(verify): composed winner + sharded manager (Task G)"
 ```
 
 ---
 
 ## Self-review notes (gaps the implementer must close)
 
-- **Repair caller (A, B):** `repair_operation.rs` calls `run_checkpoints` — wrap its
-  `Pipeline` in `Arc` to match the new `self: Arc<Self>` signature; verify by compiling.
-- **Dead code (B, C):** after restructuring, delete now-unused helpers
-  (`process_buckets`/`process_history_and_buckets` in B; async `verify_bucket_maybe_write`
-  / `decompress_and_write_internal` in C **only if** the mirror path doesn't still use
-  them — `grep` callers first). Clean implementation = remove what the branch no longer uses.
-- **`Reader::read(..)` (D):** confirm in opendal 0.55; else collect `into_stream`.
-- **E return types:** match each `parse_*_stream`'s real signature (ledger header type).
-- **Manager lock:** if a full-fix branch plateaus < 32 cores with `runnable_q>0`, add a
-  follow-up task to shard `XdrVerificationManager`'s `Mutex<HashMap>`.
+- **Repair caller (A, B):** only the **`run_checkpoints`** call
+  (`repair_operation.rs:494`) needs the `Arc` wrap — `run_checkpoints` is the one becoming
+  `self: Arc<Self>`. `process_file` (`:447`) and `process_history_and_buckets` (`:445`)
+  **keep `&self`** (A2), so those repair call sites are untouched. **Do not delete
+  `process_history_and_buckets`** — repair depends on it (the original plan's deletion
+  note was wrong; corrected in Task B).
+- **Keep the mirror decode helpers (C):** `verify_bucket_maybe_write` (`verify.rs`) and
+  `decompress_and_write_internal` (`xdr_verify.rs`) are used by the mirror verify-on-write
+  path (`verify_and_write_bucket` `verify.rs:166`, `verify_and_write_xdr`
+  `xdr_verify.rs:1192`) — verified; **do not delete them**. C only rewrites the scan-path
+  `verify_bucket_stream` / `decompress_to_buffer`.
+- **`Reader::read(..)` (C, D):** returns `opendal::Buffer`; `.to_vec()` → `Vec<u8>`.
+  Confirm in opendal 0.55; else collect `into_stream`.
+- **E/F return types:** match each `parse_*_stream`'s real signature (the ledger-header
+  type in particular — don't guess).
+- **Manager lock:** Task G handles it; only act on the measured signal (plateau < 32 cores
+  with `runnable_q > 0`).
 - **Mirror parity:** these branches change the *scan-verify* decode; if a branch also
   affects the mirror verify-on-write path (shared functions), run a mirror smoke test too.
+- **`tokio-util` `io-util`** already present (`Cargo.toml:69`) — no Cargo change for C (A7).
