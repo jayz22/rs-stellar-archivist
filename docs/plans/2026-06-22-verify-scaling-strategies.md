@@ -6,7 +6,9 @@
 **Goal:** Implement six **mutually-exclusive** candidate fixes (A–F) for the verify-mode
 scaling bottleneck, **each on its own branch off a common base**, then run one benchmark
 suite that compares them on correctness, core usage, scan-verify (multi-L10), and
-scan-no-verify — followed by a composition/productionization step (Task G).
+scan-no-verify — followed by a composition/productionization step (Task G) and a
+**winner capability graph** (Task H: throughput vs cores over the 196,608-cp multi-L10
+range).
 
 **Architecture:** Five sibling branches share base commit **`d0266b2`** (HEAD of
 `perf-verify-speedup` *excluding* the uncommitted Task-A prototype). Each branch is a
@@ -871,6 +873,72 @@ parse-offload on top and re-measure.
 SA_BINS="base a b g" scripts/perf/bench_strategies.sh | tee -a perf-results/maxconc/verifysim/strategies/summary.txt
 git add -f perf-results/maxconc/verifysim/strategies/ ; git commit -m "perf(verify): composed winner + sharded manager (Task G)"
 ```
+
+---
+
+## Task H: winner capability graph — throughput vs cores
+
+**Why:** the benchmark (Task BENCH) ranks strategies at a fixed `-c=128` on 32 cores. The
+*capability* question is whether the winner actually **scales with cores** — the baseline
+was flat at ~3 cores regardless. Produce a strong-scaling curve for the winner (and the
+**base** as the flat reference) over the **same multi-L10 range** (196,608 cp), varying
+the number of physical cores.
+
+**Files:** Create `scripts/perf/capability_graph.sh`; outputs CSV + a plot via the
+existing `scripts/perf/plot.py`.
+
+- [ ] **Step 1: Sweep cores with `taskset` (winner + base)**
+
+Pin the process to N physical cores (the OS then caps decode parallelism at N, regardless
+of tokio's worker count); measure throughput over a fixed window. `SA_PERF_OUT`'s
+`timeseries.csv` gives decompressed `bytes_done` even on a killed run.
+
+```bash
+#!/usr/bin/env bash
+# capability_graph.sh — throughput (+ cores) vs N physical cores, for the winner & base.
+set -o pipefail; export PATH="$HOME/.cargo/bin:$PATH"
+ARCHIVE="${SA_ARCHIVE:-http://127.0.0.1:8088}"
+LOW="${SA_LOW:-50463103}"; HIGH="${SA_HIGH:-63046015}"   # 196,608 cp = 3×L10
+WINDOW="${SA_WINDOW:-60}"; C="${SA_C:-128}"
+NCORES="${SA_NCORES:-1 2 4 8 16 24 32}"
+OUT="${SA_OUT:-perf-results/maxconc/verifysim/capability}"; mkdir -p "$OUT"
+echo "bin,cores,decompressed_mb_per_s,busy_cores_mean" > "$OUT/capability.csv"
+for BIN in "${SA_WINNER:-bin/sa-a}" bin/sa-base; do
+  for n in $NCORES; do
+    d="$OUT/$(basename "$BIN")_n${n}"; rm -rf "$d"
+    taskset -c "0-$((n-1))" env SA_PERF_OUT="$d" SA_RT_METRICS=1 "$BIN" scan "$ARCHIVE" \
+      -c "$C" --max-concurrent "$C" --verify --skip-optional --low "$LOW" --high "$HIGH" \
+      >/dev/null 2>"$d.rtm" & p=$!; sleep "$WINDOW"; kill -9 $p 2>/dev/null
+    mbps=$(awk -F, 'NR>1{b=$3} END{printf "%.0f", (b+0)/'"$WINDOW"'/1e6}' "$d/timeseries.csv" 2>/dev/null)
+    cores=$(grep '^RTM' "$d.rtm" 2>/dev/null | python3 -c "import sys,re;v=[float(re.search(r'busy_cores=([\d.]+)',l).group(1)) for l in sys.stdin if 'busy_cores' in l];print(f'{sum(v)/len(v):.1f}' if v else '0')")
+    echo "$(basename "$BIN"),$n,${mbps:-0},${cores:-0}" | tee -a "$OUT/capability.csv"
+  done
+done
+```
+
+- [ ] **Step 2: Plot throughput vs cores (winner vs base)**
+
+```bash
+chmod +x scripts/perf/capability_graph.sh
+SA_WINNER=bin/sa-<winner> scripts/perf/capability_graph.sh
+python3 scripts/perf/plot.py "$OUT/capability.csv"   # cores (x) vs decompressed_mb_per_s (y), one line per bin
+```
+Expected shape: **winner ≈ near-linear** up to where the workload's parallelism or the next
+limit (manager `Mutex` / the single-stream long-pole on a shared big bucket) caps it;
+**base ≈ flat ~3 cores' worth** at every N (the bottleneck this whole effort removes).
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add scripts/perf/capability_graph.sh
+git add -f perf-results/maxconc/verifysim/capability/
+git commit -m "perf(verify): winner capability graph (throughput vs cores)"
+```
+
+> If "different cores" should instead mean a **`-c` sweep** (concurrency, not physical
+> cores), swap the `taskset` loop for a `-c ∈ {4,8,16,32,64,128,256}` loop at fixed 32
+> cores — but the physical-core sweep above is the canonical "does it scale with cores"
+> capability graph.
 
 ---
 
