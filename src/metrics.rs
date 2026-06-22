@@ -24,6 +24,26 @@ impl Phase {
     pub const COUNT: usize = 11;
 }
 
+/// Always-on diagnostic gauge: number of decode tasks (gzip+SHA bucket `hash_task`
+/// and gzip xdr `decompress_task`) currently *running*. Lets us see, in-runtime, how
+/// many decodes are concurrently alive — distinguishing "orchestration only creates a
+/// few" from "many exist but sit starved/unscheduled". Cheap atomic; not gated.
+pub static ACTIVE_DECODES: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
+/// RAII guard for [`ACTIVE_DECODES`]: `enter()` at decode-task start, decrement on drop.
+pub struct DecodeGuard;
+impl DecodeGuard {
+    pub fn enter() -> Self {
+        ACTIVE_DECODES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        DecodeGuard
+    }
+}
+impl Drop for DecodeGuard {
+    fn drop(&mut self) {
+        ACTIVE_DECODES.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 #[cfg(feature = "perf-metrics")]
 const NAMES: [&str; Phase::COUNT] = [
     "history_fetch",

@@ -1013,6 +1013,7 @@ async fn decompress_and_write_internal(
     let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(CHANNEL_CAPACITY);
 
     let decompress_task = tokio::spawn(async move {
+        let _dg = crate::metrics::DecodeGuard::enter();
         let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
         let stream = stream.map(Ok::<_, std::io::Error>);
         let stream_reader = StreamReader::new(stream);
