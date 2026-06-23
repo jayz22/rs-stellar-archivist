@@ -994,3 +994,65 @@ git commit -m "perf(verify): winner capability graph (throughput vs cores)"
 - **Mirror parity:** these branches change the *scan-verify* decode; if a branch also
   affects the mirror verify-on-write path (shared functions), run a mirror smoke test too.
 - **`tokio-util` `io-util`** already present (`Cargo.toml:69`) — no Cargo change for C (A7).
+
+---
+
+## Addendum (2026-06-23): post-results follow-ups (C-1 control + instrumentation audit)
+
+Added after Phase-2/3 completed (winner = A; see `verify-scaling-investigation.md` §10).
+Two review-driven follow-ups.
+
+### Strategy C-1 — bulk-read + async-spawn decode (control for "is the pool the lever?")
+
+**Hypothesis.** C's win comes from **bulk-reading the whole compressed body up front**
+(removing base's serial per-chunk feed that starved the decoders), **not** from moving decode
+to the `spawn_blocking` pool. base already ran decode in spawned async tasks (`verify.rs:40`,
+`xdr_verify.rs:1015`) and still pinned at ~2 cores — so the pool location was never the issue.
+
+**Design.** Branch `vs/c1-bulk-async` off the (now instrumentation-updated) base. Identical to
+C except the decode runs on a `tokio::spawn`'d **async** task over the already-read in-memory
+body, instead of `spawn_blocking` + sync `flate2`:
+- bucket (`verify_bucket_stream`): `reader.read(..).await.to_vec()` →
+  `tokio::spawn(async { GzipDecoder::new(StreamReader::new(once(Bytes))) → SHA-256 })`.
+- xdr (`decompress_to_buffer`): same shape; returns the decompressed `Vec<u8>`.
+- Holds **bulk-read constant**, flips only **pool** (blocking → async). Reuses the existing
+  `async_compression` GzipDecoder + `tokio_util::io::StreamReader` already in base.
+
+**Success criterion.** Correctness gate (2000 cp, broken_sig == `4f53cda18c2baa0c`). Then a
+2000-cp scaling check: if `cores_mean` ≈ C's (~20+) → **hypothesis confirmed** (pool incidental,
+bulk-read is the lever). If it pins at ~2 cores → hypothesis refuted (pool matters). Then a full
+1×L10 (65,536 cp) verify+noverify row for the §10 table.
+
+### Task I — instrumentation correctness (audit + Tier-1 fix)
+
+**Audit finding.** `phase!` (`lib.rs:54` → `metrics::Guard`) records `Instant::elapsed()`
+(**wall**) on drop, summed across concurrent calls, and `report()` prints `pct = phase_ns /
+Σ phase_ns`. Problems: (1) decode scopes (`BucketStream`, `XdrDecompress`) wrap `.await`, so
+they accumulate **I/O + feed + channel wait**, not CPU; (2) parse scopes are pure-CPU but,
+running on the orchestration thread, their wall is inflated by **preemption** under
+oversubscription; (3) the single `pct` mixes wall-with-wait and CPU phases → meaningless as a
+CPU breakdown (this produced the false "decode 92.9% / parse 0.1%", retracted in §10.5).
+XDR *parsing* is already instrumented (`XdrParse*`); the gaps are CPU-clock + bundled
+hash/copy/record.
+
+**Tier-1 change (metrics.rs only; chosen scope).**
+- Add `cpu_nanos` to `Stat`; `Guard` reads `clock_gettime(CLOCK_THREAD_CPUTIME_ID)` (via the
+  already-present `libc`) at new/drop. CPU-time **excludes de-scheduled time**, so it is
+  preemption-immune.
+- Tag each `Phase` **sync** (CPU valid: parse/verify/copy/history_parse) vs **async** (CPU
+  invalid — spans awaits / may resume on another thread: `BucketStream`, `XdrDecompress`,
+  `HistoryFetch`). Record CPU only for sync phases (guard: skip if `cpu_end < cpu_start`).
+- `report()` additionally emits **total process CPU** (`getrusage` `ru_utime + ru_stime`) so
+  decode CPU = total − Σ(sync-phase CPU) − history, recoverable without splitting async scopes.
+- Print `wall_self` and `cpu_self` as separate columns; stop emitting the single mixed `pct`;
+  add a phase-semantics table comment.
+- **Safety:** only atomic counters + vDSO `clock_gettime` (~tens of ns) — NOT `eprintln` in hot
+  paths (the per-call `eprintln` probe used during the §10.5 deep-dive perturbed the hot path
+  ~8× and is the cautionary example).
+- **Out of scope (Tier 2/3, not chosen):** splitting `BucketStream`→read/inflate/hash and
+  adding `to_vec`/`manager_record` phases. Recorded for future.
+
+**Apply + measure.** Land Tier-1 on base; propagate to A and inherit on C-1. Re-measure base
++ A on 2000 cp (CPU breakdown) to replace the "open item" in §10.5 with real decode-vs-parse
+CPU numbers. wall/cores/mbps must be unchanged vs the headline runs (the change is measurement-
+only).
