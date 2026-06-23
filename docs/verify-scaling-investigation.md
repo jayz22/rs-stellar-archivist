@@ -435,8 +435,8 @@ the 2,000-cp correctness gate with the identical broken-set signature
 | A spawn/checkpoint | `tokio::spawn(process_checkpoint)`, Semaphore(-c) | 1,269 s (21.1 min) | **10.5×** | 3309 | **31.7** | 633 | 3135 MB | 0 |
 | B spawn/file | JoinSet per file, global file `Semaphore` | 1,262 s (21.0 min) | **10.6×** | 3326 | **31.6** | 582 | 2918 MB | 0 |
 | C spawn_blocking decode | async read → `spawn_blocking` flate2+sha, `Semaphore` | 1,264 s (21.1 min) | **10.5×** | 3323 | 31.4† | 580 | 2944 MB | 0 |
-| D rayon decode pool | _running_ | | | | | | | |
-| E parse-in-spawned-task | _pending_ | | | | | | | |
+| D rayon decode pool | async read → `rayon::spawn` decode, oneshot | **REJECTED** — collapses to ~1-way (≈base) | ~1.1× | ~220–280 | ~0 | 1‡ | 7–12 GB‡ | 0 |
+| E parse-in-spawned-task | _running_ | | | | | | | |
 | F parse-on-spawn_blocking | _pending_ | | | | | | | |
 
 No-verify control (existence-only scan) is ~uniform: base = 312 s, 0.1 cores — confirms the
@@ -470,3 +470,29 @@ orchestration walk itself is trivial; verify decode/hash is the entire cost.
   on blocking threads — so C's true CPU use is ≥ the other strategies'. Wall/MB-s, which are
   backend-agnostic, confirm it lands on the same hardware ceiling.) Pulls the C-toolchain
   `flate2` sync path into the hot loop; equal speed to A with a heavier decode dependency.
+- **D (rayon decode pool) — REJECTED (performance dead-end, thoroughly investigated):**
+  Structurally identical to C (async read → offload decode+hash → `await`), differing *only*
+  in the bridge: `rayon::spawn` + a `tokio::oneshot` instead of `tokio::spawn_blocking`. It
+  collapses to ~1-way decode and never exceeds base throughput. ‡ Symptoms (reproduced on
+  both small-bucket *and* mature-bucket ranges, so not data-dependent), measured against C on
+  the **same** ranges:
+  - early range (~190 cp): **D** 221 MB/s, ~0 busy cores, 0–1 concurrent decodes, **6.9 GB**
+    RSS — vs **C** 442 MB/s, ~30 cores, ~800 concurrent decodes, 1.7 GB RSS.
+  - mature range (~200 cp): **D** 277 MB/s, ~0 cores, **11.8 GB** RSS — vs **C** 665 MB/s,
+    ~32 cores, 2.4 GB RSS.
+  - Thread inspection (`/proc/<pid>/task`): 32 rayon decode threads exist but **R=0** (all
+    parked); the 32 tokio workers are also parked; only ~1 thread runs at any instant. RSS
+    balloons because async reads complete and hold their compressed buffers while almost no
+    decode drains them.
+  - **Root cause:** the async→external-thread *oneshot bridge*, not the pool. Confirmed by
+    two independent rewrites that failed identically: (1) rayon's *global* pool
+    (`rayon::spawn`, the `tokio-rayon` pattern) and (2) a hand-rolled fixed-size Condvar/queue
+    thread pool that **guarantees** N-way fan-out. Both leave the decode threads idle while
+    work fails to flow — i.e. waking a parked tokio task from a non-tokio thread via oneshot
+    does not sustain the file-level concurrency that the orchestration offers, whereas
+    tokio-native `spawn_blocking` (C) — scheduled and woken by the runtime itself — does.
+  - **Verdict:** rejected. C is the working realization of the same "offload decode to a CPU
+    pool" idea; for this async pipeline the correct bridge is `spawn_blocking`, not a foreign
+    pool reached over a oneshot. (A full 65,536-cp D run was deliberately **not** executed: it
+    would only reproduce ≈base wall over ~3.7 h and risk OOM as the mature-bucket tail holds
+    multi-GB buffers against a near-idle decoder.)
