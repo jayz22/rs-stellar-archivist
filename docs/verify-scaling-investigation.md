@@ -434,8 +434,8 @@ the 2,000-cp correctness gate with the identical broken-set signature
 | base  | async decode on orchestration task | 13,320 s (3.70 h) | 1.0× | 315 | **1.9** | 566 | 2690 MB | 0 |
 | A spawn/checkpoint | `tokio::spawn(process_checkpoint)`, Semaphore(-c) | 1,269 s (21.1 min) | **10.5×** | 3309 | **31.7** | 633 | 3135 MB | 0 |
 | B spawn/file | JoinSet per file, global file `Semaphore` | 1,262 s (21.0 min) | **10.6×** | 3326 | **31.6** | 582 | 2918 MB | 0 |
-| C spawn_blocking decode | _running_ | | | | | | | |
-| D rayon decode pool | _pending_ | | | | | | | |
+| C spawn_blocking decode | async read → `spawn_blocking` flate2+sha, `Semaphore` | 1,264 s (21.1 min) | **10.5×** | 3323 | 31.4† | 580 | 2944 MB | 0 |
+| D rayon decode pool | _running_ | | | | | | | |
 | E parse-in-spawned-task | _pending_ | | | | | | | |
 | F parse-on-spawn_blocking | _pending_ | | | | | | | |
 
@@ -462,3 +462,11 @@ orchestration walk itself is trivial; verify decode/hash is the entire cost.
   file semaphore bounds in-flight buffers more tightly than A's per-checkpoint fan-out.
   Verdict: equivalent speed, slightly leaner, but more machinery (JoinSet + extra
   semaphore) than A for no throughput gain.
+- **C (spawn_blocking decode):** reads the compressed body async then runs flate2 decode +
+  SHA-256 on tokio's blocking pool (gated by a `Semaphore(available_parallelism)`). Same
+  ceiling: **10.5×** (1,264 s), 3323 MB/s, RSS 2,944 MB, 0 fail. († The RTM `busy_cores`
+  gauge samples only the 32 *async* workers, not the blocking pool; the 31.4 reading is the
+  async side staying saturated on read+copy+result handling, while decode runs additionally
+  on blocking threads — so C's true CPU use is ≥ the other strategies'. Wall/MB-s, which are
+  backend-agnostic, confirm it lands on the same hardware ceiling.) Pulls the C-toolchain
+  `flate2` sync path into the hot loop; equal speed to A with a heavier decode dependency.
