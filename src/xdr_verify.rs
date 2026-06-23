@@ -848,15 +848,55 @@ async fn decompress_to_buffer(path: &str, reader: Reader) -> Result<Vec<u8>, Sto
 
 /// Decompress a gzipped ledger file from a reader and parse it.
 /// Infers the checkpoint number from the file path for range validation.
+/// Strategy E: stream `reader` → mpsc → a spawned task that gzip-decodes to a buffer and
+/// runs `parse` on it. The feed loop runs on the caller; the spawned task does decode +
+/// parse + hash — so both the gzip and the XDR parse/hash leave the orchestration task.
+async fn decompress_then<T, F>(path: &str, reader: Reader, parse: F) -> Result<T, StorageError>
+where
+    T: Send + 'static,
+    F: FnOnce(&[u8]) -> Result<T, StorageError> + Send + 'static,
+{
+    let stream = reader
+        .into_stream(..)
+        .await
+        .map_err(|e| from_opendal_error(e, &format!("stream {}", path)))?;
+    let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(CHANNEL_CAPACITY);
+    let path_owned = path.to_string();
+    let task = tokio::spawn(async move {
+        let _dg = crate::metrics::DecodeGuard::enter();
+        let sr = StreamReader::new(
+            tokio_stream::wrappers::ReceiverStream::new(rx).map(Ok::<_, std::io::Error>),
+        );
+        let mut dec = GzipDecoder::new(BufReader::new(sr));
+        let mut decompressed = Vec::new();
+        dec.read_to_end(&mut decompressed)
+            .await
+            .map_err(|e| StorageError::retry(format!("decompress {}: {}", path_owned, e)))?;
+        parse(&decompressed)
+    });
+    futures_util::pin_mut!(stream);
+    while let Some(chunk) = stream.next().await {
+        let buf = chunk.map_err(|e| from_opendal_error(e, &format!("read {}", path)))?;
+        for c in buf {
+            if tx.send(c).await.is_err() {
+                break;
+            }
+        }
+    }
+    drop(tx);
+    task.await
+        .map_err(|e| StorageError::fatal(format!("parse task panicked {}: {}", path, e)))?
+}
+
 pub async fn parse_ledger_header_stream(
     path: &str,
     reader: Reader,
 ) -> Result<BTreeMap<u32, LedgerHeaderVerificationData>, StorageError> {
-    let decompressed = decompress_to_buffer(path, reader).await?;
-    parse_ledger_header_entries_for_checkpoint(
-        &decompressed,
-        history_format::checkpoint_from_path(path),
-    )
+    let cp = history_format::checkpoint_from_path(path);
+    decompress_then(path, reader, move |b| {
+        parse_ledger_header_entries_for_checkpoint(b, cp)
+    })
+    .await
 }
 
 /// Decompress a gzipped result file from a reader and parse it.
@@ -865,8 +905,11 @@ pub async fn parse_results_stream(
     path: &str,
     reader: Reader,
 ) -> Result<BTreeMap<u32, Hash>, StorageError> {
-    let decompressed = decompress_to_buffer(path, reader).await?;
-    parse_result_entries_for_checkpoint(&decompressed, history_format::checkpoint_from_path(path))
+    let cp = history_format::checkpoint_from_path(path);
+    decompress_then(path, reader, move |b| {
+        parse_result_entries_for_checkpoint(b, cp)
+    })
+    .await
 }
 
 /// Parse decompressed transaction XDR data, computing content hashes per ledger.
@@ -951,11 +994,11 @@ pub async fn parse_transactions_stream(
     path: &str,
     reader: Reader,
 ) -> Result<BTreeMap<u32, Hash>, StorageError> {
-    let decompressed = decompress_to_buffer(path, reader).await?;
-    parse_transaction_entries_for_checkpoint(
-        &decompressed,
-        history_format::checkpoint_from_path(path),
-    )
+    let cp = history_format::checkpoint_from_path(path);
+    decompress_then(path, reader, move |b| {
+        parse_transaction_entries_for_checkpoint(b, cp)
+    })
+    .await
 }
 
 /// Decompress a gzipped SCP file from a reader and validate its frame structure.
