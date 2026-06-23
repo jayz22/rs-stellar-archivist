@@ -490,9 +490,15 @@ impl RepairOperation {
         // direct fetches or via its HISTORY entries, which trigger
         // `process_history_and_buckets`). So skip HAS + bucket work in
         // the inner `process_checkpoint` (the builder sets that).
-        let checkpoint_retry_pipeline = self.build_checkpoint_retry_pipeline();
-        let _ = checkpoint_retry_pipeline.run_checkpoints(retry_cps).await;
-        checkpoint_retry_pipeline.into_stats()
+        // run_checkpoints now takes `self: Arc<Self>` (Strategy A). Wrap, run, reclaim.
+        let checkpoint_retry_pipeline =
+            std::sync::Arc::new(self.build_checkpoint_retry_pipeline());
+        let _ = std::sync::Arc::clone(&checkpoint_retry_pipeline)
+            .run_checkpoints(retry_cps)
+            .await;
+        std::sync::Arc::try_unwrap(checkpoint_retry_pipeline)
+            .unwrap_or_else(|_| unreachable!("retry pipeline still shared after run_checkpoints"))
+            .into_stats()
     }
 
     /// Restore `.well-known/stellar-history.json` by copying the highest

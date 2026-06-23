@@ -16,7 +16,7 @@ use futures_util::{
 };
 use lru::LruCache;
 use opendal::Buffer;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use thiserror::Error;
 use tracing::{debug, error, info, warn};
 
@@ -289,14 +289,18 @@ impl<Op: Operation> Pipeline<Op> {
             .await?;
 
         let total_count = history_format::count_checkpoints_in_range(lower_bound, upper_bound);
+        let this = Arc::new(self);
         if total_count != 0 {
             let checkpoints =
                 (lower_bound..=upper_bound).step_by(history_format::CHECKPOINT_FREQUENCY as usize);
-            self.run_checkpoints(checkpoints).await?;
+            Arc::clone(&this).run_checkpoints(checkpoints).await?;
         } else {
             info!("No checkpoints to process");
         }
-        self.finish(upper_bound).await
+        Arc::try_unwrap(this)
+            .unwrap_or_else(|_| unreachable!("pipeline still shared after run_checkpoints"))
+            .finish(upper_bound)
+            .await
     }
 
     /// Run the pipeline over an explicit set of checkpoints (possibly
@@ -307,7 +311,7 @@ impl<Op: Operation> Pipeline<Op> {
     /// Callers that want the full lifecycle should use [`Self::run`] (or
     /// pair `run_checkpoints` with an explicit `finish`).
     /// An empty input is a no-op.
-    pub async fn run_checkpoints<I>(&self, cps: I) -> Result<(), Error>
+    pub async fn run_checkpoints<I>(self: Arc<Self>, cps: I) -> Result<(), Error>
     where
         I: IntoIterator<Item = u32>,
     {
@@ -323,15 +327,29 @@ impl<Op: Operation> Pipeline<Op> {
         let num_completed = std::sync::atomic::AtomicUsize::new(0);
         let completed_ref = &num_completed;
 
+        // Strategy A: spawn each checkpoint onto the worker pool so its feed + decode +
+        // parse + hash + verify run in parallel, not cooperatively on this one task.
+        // for_each_concurrent bounds in-flight checkpoints to `concurrency`.
         stream::iter(cps)
-            .for_each_concurrent(self.config.concurrency, |ck| async move {
-                self.process_checkpoint(ck).await;
-                let done = completed_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                if done.is_multiple_of(PROGRESS_REPORTING_FREQUENCY) || total == Some(done) {
-                    if let Some(total) = total {
-                        info!("Progress: {done}/{total} checkpoints processed");
-                    } else {
-                        info!("Progress: {done} checkpoints processed");
+            .for_each_concurrent(self.config.concurrency, |ck| {
+                let me = Arc::clone(&self);
+                async move {
+                    if let Err(e) =
+                        tokio::spawn(async move { me.process_checkpoint(ck).await }).await
+                    {
+                        // Match base abort-on-panic semantics; never swallow a panic.
+                        if e.is_panic() {
+                            std::panic::resume_unwind(e.into_panic());
+                        }
+                        error!("checkpoint {ck} task cancelled: {e}");
+                    }
+                    let done = completed_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                    if done.is_multiple_of(PROGRESS_REPORTING_FREQUENCY) || total == Some(done) {
+                        if let Some(total) = total {
+                            info!("Progress: {done}/{total} checkpoints processed");
+                        } else {
+                            info!("Progress: {done} checkpoints processed");
+                        }
                     }
                 }
             })

@@ -1892,9 +1892,9 @@ async fn test_repair_dry_run_verify_surfaces_cross_file_failure() {
         verify: true,
         storage_config,
     };
-    let pipeline = Pipeline::new(op, config, src_store, Some(dst_store), None);
+    let pipeline = std::sync::Arc::new(Pipeline::new(op, config, src_store, Some(dst_store), None));
     let cps = (low..=high).step_by(history_format::CHECKPOINT_FREQUENCY as usize);
-    pipeline
+    std::sync::Arc::clone(&pipeline)
         .run_checkpoints(cps)
         .await
         .expect("run_checkpoints");
@@ -1916,7 +1916,8 @@ async fn test_repair_dry_run_verify_surfaces_cross_file_failure() {
         );
     }
 
-    pipeline
+    std::sync::Arc::try_unwrap(pipeline)
+        .unwrap_or_else(|_| unreachable!("pipeline still shared after run_checkpoints"))
         .finish(high)
         .await
         .expect("dry-run finalize should return Ok");
