@@ -402,3 +402,48 @@ the ceiling we expect to unlock).
   conclusion** (serial orchestration task does feed+parse+hash+verify while spawned
   decoders starve) is code-level and portable. Disk cold (4.3 TB > RAM) but provably not
   the limiter (sub-ms await, idle).
+
+---
+
+## 10. Part 3 — strategy benchmark A–F (full 1×L10, 65,536 checkpoints)
+
+Six mutually-exclusive strategies (see `docs/plans/2026-06-22-verify-scaling-strategies.md`),
+each implemented cleanly on its own branch off the same base (`vs/a`..`vs/f`), all passing
+the 2,000-cp correctness gate with the identical broken-set signature
+`4f53cda18c2baa0c` (succeeded 24,463 / failed 0) as base.
+
+### 10.0 Method
+- **Range:** ledgers 58,851,711..63,046,015 = 65,536 checkpoints = 1×L10 (run to
+  completion, NO timeout). 773,324 files verified per full run.
+- **Archive:** local-sim (`miniserve /data/pubnet-mirror` on loopback) → network effectively
+  infinite, so any idle cores are a *design* limit, not bandwidth.
+- **Invocation:** `scan <url> -c 128 --max-concurrent 128 [--verify] --skip-optional`.
+  `--verify` = decode+hash every bucket + XDR parse; no-verify = existence-only control.
+- **Instrumentation:** binaries built `--cfg tokio_unstable --features perf-metrics`;
+  `SA_RT_METRICS=1` samples `busy_cores` (sum of per-worker busy ratios, /32) every 500 ms.
+  `cores_mean` is the headline scaling number. `active_dec` = mean concurrent decodes in
+  flight. Wall/MB-s/RSS from in-process perf metrics. Harness:
+  `scripts/perf/bench_strategies.sh`; raw per-run artifacts under
+  `perf-results/<strat>/{verify,noverify}/` (report.json, stdout/stderr logs, headline.csv).
+- **Box:** aarch64, 32 logical cores, tokio default 32 workers.
+
+### 10.1 Results — verify (the metric that matters)
+
+| strat | mechanism | wall | speedup | mb/s | cores_mean | active_dec | peak_rss | fail |
+|-------|-----------|------|---------|------|-----------|-----------|----------|------|
+| base  | async decode on orchestration task | 13,320 s (3.70 h) | 1.0× | 315 | **1.9** | 566 | 2690 MB | 0 |
+| A spawn/checkpoint | _running_ | | | | | | | |
+| B spawn/file | _pending_ | | | | | | | |
+| C spawn_blocking decode | _pending_ | | | | | | | |
+| D rayon decode pool | _pending_ | | | | | | | |
+| E parse-in-spawned-task | _pending_ | | | | | | | |
+| F parse-on-spawn_blocking | _pending_ | | | | | | | |
+
+No-verify control (existence-only scan) is ~uniform: base = 312 s, 0.1 cores — confirms the
+orchestration walk itself is trivial; verify decode/hash is the entire cost.
+
+### 10.2 Per-strategy notes
+- **base (reference):** verify pins at **1.9 mean cores** (p50 1.7) with **566 decodes in
+  flight on average** — i.e. ~566 concurrent decode futures all polled on the single
+  orchestration task, so wall is bounded by ~2 cores of CPU. 3.70 h for 1×L10. Matches the
+  §9 root-cause diagnosis exactly at full scale.
