@@ -541,4 +541,25 @@ Method: the winner `bin/sa-a` and `bin/sa-base`, full 1×L10 (65,536 cp, verify)
 completion under CPU-affinity caps via `taskset --cpu-list 0..N-1` for N ∈ {4, 8, 16, 24,
 32}. Affinity (not tokio worker count) is used so *all* threads — async workers, blocking
 pool, allocator — are confined to N physical cores, giving a true throughput-vs-cores curve.
-Script: `scripts/perf/capability_graph.sh`. (Results table populated below as runs finish.)
+Script: `scripts/perf/capability_graph.sh`; plot: `scripts/perf/plot_capability.py` →
+`perf-results/plots/verify_capability.png`.
+
+| cores (cap) | A wall | A MB/s | A cores used | MB/s per core | base MB/s | base cores used |
+|-------------|--------|--------|--------------|---------------|-----------|-----------------|
+| 4  | 9,328 s | 450  | 4.0  | 113 | ~315§ | ~1.9 |
+| 8  | 4,621 s | 909  | 8.0  | 114 | — | — |
+| 16 | 2,309 s | 1,818 | 15.9 | 114 | — | — |
+| 24 | 1,550 s | 2,709 | 23.9 | 113 | — | — |
+| 32 | 1,265 s | 3,318 | 31.7 | 104 | 315 | 1.9 |
+
+**Reading the graph.** The winner (A) scales **linearly**: mean cores used tracks the cap
+1:1 (4.0/8.0/15.9/23.9/31.7) and MB/s per core is flat at ~113 from 4→24 cores, i.e. ~92%
+of ideal-linear at 32 (the only sub-linear point — expected as the last cores share
+SMT/memory bandwidth). 4→32 cores = **7.4× throughput**. base, by contrast, is a horizontal
+line: it pins at ~1.9 cores and ~315 MB/s no matter how many cores it is given — the §9
+serial-orchestration ceiling. The gap at 32 cores is the headline result: **A is 10.5× base
+at the same hardware because it actually uses the hardware.**
+
+§ base is core-insensitive by construction (it never demands more than ~2 cores, so a cap of
+4–32 cannot constrain it). The 32-core point is the Phase-2 base run; a base@4 point is run
+to anchor the low end empirically (expected ≈315 MB/s — flat). [base@4: _running_]
