@@ -433,8 +433,8 @@ the 2,000-cp correctness gate with the identical broken-set signature
 |-------|-----------|------|---------|------|-----------|-----------|----------|------|
 | base  | async decode on orchestration task | 13,320 s (3.70 h) | 1.0× | 315 | **1.9** | 566 | 2690 MB | 0 |
 | A spawn/checkpoint | `tokio::spawn(process_checkpoint)`, Semaphore(-c) | 1,269 s (21.1 min) | **10.5×** | 3309 | **31.7** | 633 | 3135 MB | 0 |
-| B spawn/file | _running_ | | | | | | | |
-| C spawn_blocking decode | _pending_ | | | | | | | |
+| B spawn/file | JoinSet per file, global file `Semaphore` | 1,262 s (21.0 min) | **10.6×** | 3326 | **31.6** | 582 | 2918 MB | 0 |
+| C spawn_blocking decode | _running_ | | | | | | | |
 | D rayon decode pool | _pending_ | | | | | | | |
 | E parse-in-spawned-task | _pending_ | | | | | | | |
 | F parse-on-spawn_blocking | _pending_ | | | | | | | |
@@ -455,3 +455,10 @@ orchestration walk itself is trivial; verify decode/hash is the entire cost.
   stay saturated, not stalled on the lock). No-verify unchanged (312 s, 0.4 cores) — the
   fix is isolated to the verify decode path. **This is the direct realization of the §9
   Tier-0 fix and the headline candidate.**
+- **B (spawn per file):** finer granularity (each file's verify is its own task, gated by a
+  global file `Semaphore`) lands on the *same* ceiling as A — **31.6 mean cores**, **10.6×**
+  (1,262 s), 3326 MB/s — i.e. checkpoint-level spawning (A) already saturates the box, so
+  going finer adds no throughput. It does trim peak RSS (2,918 vs A's 3,135 MB) because the
+  file semaphore bounds in-flight buffers more tightly than A's per-checkpoint fan-out.
+  Verdict: equivalent speed, slightly leaner, but more machinery (JoinSet + extra
+  semaphore) than A for no throughput gain.
