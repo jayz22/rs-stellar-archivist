@@ -837,13 +837,30 @@ pub(crate) fn parse_result_entries_for_checkpoint(
     Ok(hashes)
 }
 
-/// Decompress a gzipped reader into an in-memory `Vec<u8>`. No write side —
-/// thin wrapper over [`decompress_and_write_internal`] with `writer = None`.
+/// Decompress a gzipped reader into an in-memory `Vec<u8>` (Strategy C-1): bulk-read the
+/// compressed body async, then gzip-decode on a spawned **async** task (`tokio::spawn`) over
+/// the in-memory body — same bulk-read as C, but async-pool instead of `spawn_blocking`.
+/// The XDR *parse* stays on the caller. Mirror write path keeps `decompress_and_write_internal`.
 async fn decompress_to_buffer(path: &str, reader: Reader) -> Result<Vec<u8>, StorageError> {
-    // the writer is None, thus the return sink is also None, which is safe to
-    // be discarded
-    let (decompressed, _) = decompress_and_write_internal(path, reader, None).await?;
-    Ok(decompressed)
+    let bytes = Bytes::from(
+        reader
+            .read(..)
+            .await
+            .map_err(|e| from_opendal_error(e, &format!("read {}", path)))?
+            .to_vec(),
+    );
+    let p = path.to_string();
+    tokio::spawn(async move {
+        let _dg = crate::metrics::DecodeGuard::enter();
+        let stream = tokio_stream::once(Ok::<Bytes, std::io::Error>(bytes));
+        let stream_reader = StreamReader::new(stream);
+        let mut decoder = GzipDecoder::new(BufReader::new(stream_reader));
+        let mut out = Vec::new();
+        decoder.read_to_end(&mut out).await.map(|_| out)
+    })
+    .await
+    .map_err(|e| StorageError::fatal(format!("decompress task panicked {}: {}", p, e)))?
+    .map_err(|e| StorageError::retry(format!("decompress {}: {}", p, e)))
 }
 
 /// Decompress a gzipped ledger file from a reader and parse it.

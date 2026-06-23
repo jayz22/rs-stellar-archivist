@@ -139,8 +139,52 @@ async fn verify_bucket_maybe_write(
 /// decode (commit 4a2c6f3, "not for merge as-is") is parked; see
 /// `docs/verify-scaling-investigation.md` §4 for the async-vs-sync decision.
 pub async fn verify_bucket_stream(path: &str, reader: Reader) -> Result<(), StorageError> {
-    debug!("Verifying bucket hash for {}", path);
-    verify_bucket_maybe_write(path, reader, None).await
+    debug!("Verifying bucket hash for {} (C-1 bulk-read + async spawn)", path);
+    let _g = crate::phase!(crate::metrics::Phase::BucketStream);
+    let expected = bucket_hash_from_path(path)
+        .ok_or_else(|| StorageError::fatal(format!("Invalid bucket path: {}", path)))?;
+    // FEED: bulk read the whole compressed body (async I/O) — NO per-chunk feed loop.
+    let bytes = Bytes::from(
+        reader
+            .read(..)
+            .await
+            .map_err(|e| from_opendal_error(e, &format!("Failed to read {}", path)))?
+            .to_vec(),
+    );
+    let path_owned = path.to_string();
+    // DECODE + HASH on a spawned ASYNC task (async GzipDecoder over the in-memory body).
+    // Same bulk-read as C; the ONLY difference vs C is async tokio::spawn instead of
+    // spawn_blocking — this isolates "which pool" from "bulk read removes the serial feed".
+    let (actual, n) = tokio::spawn(async move {
+        let _dg = crate::metrics::DecodeGuard::enter();
+        let stream = tokio_stream::once(Ok::<Bytes, std::io::Error>(bytes));
+        let stream_reader = tokio_util::io::StreamReader::new(stream);
+        let mut decoder = GzipDecoder::new(BufReader::new(stream_reader));
+        let mut hasher = Sha256::new();
+        let mut buf = vec![0u8; HASH_BUFFER_SIZE];
+        let mut n: u64 = 0;
+        loop {
+            let k = decoder.read(&mut buf).await?;
+            if k == 0 {
+                break;
+            }
+            hasher.update(&buf[..k]);
+            n += k as u64;
+        }
+        Ok::<_, std::io::Error>((hex::encode(hasher.finalize()), n))
+    })
+    .await
+    .map_err(|e| StorageError::fatal(format!("hash task panicked {}: {}", path_owned, e)))?
+    .map_err(|e| StorageError::retry(format!("decompress failed {}: {}", path_owned, e)))?;
+    if actual != expected {
+        return Err(StorageError::fatal(format!(
+            "Hash mismatch for {}: expected {}, got {}",
+            path, expected, actual
+        )));
+    }
+    crate::metrics::add_bytes(crate::metrics::Phase::BucketStream, n);
+    crate::metrics::record_file(n);
+    Ok(())
 }
 
 /// Verify and write a bucket file (mirror operation).
