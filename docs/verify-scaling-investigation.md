@@ -437,7 +437,7 @@ the 2,000-cp correctness gate with the identical broken-set signature
 | C spawn_blocking decode | async read → `spawn_blocking` flate2+sha, `Semaphore` | 1,264 s (21.1 min) | **10.5×** | 3323 | 31.4† | 580 | 2944 MB | 0 |
 | D rayon decode pool | async read → `rayon::spawn` decode, oneshot | **REJECTED** — collapses to ~1-way (≈base) | ~1.1× | ~220–280 | ~0 | 1‡ | 7–12 GB‡ | 0 |
 | E parse-in-spawned-task | decode+parse in a `tokio::spawn` (mpsc-fed) | 1,258 s (21.0 min) | **10.6×** | 3337 | 31.5 | 582 | **2871 MB** | 0 |
-| F parse-on-spawn_blocking | _running_ | | | | | | | |
+| F parse-on-spawn_blocking | async decode, parse on `spawn_blocking`+sem | 1,259 s (21.0 min) | **10.6×** | 3336 | 31.5 | 583 | 2967 MB | 0 |
 
 No-verify control (existence-only scan) is ~uniform: base = 312 s, 0.1 cores — confirms the
 orchestration walk itself is trivial; verify decode/hash is the entire cost.
@@ -504,3 +504,41 @@ orchestration walk itself is trivial; verify decode/hash is the entire cost.
   materialised body. Being `tokio::spawn` (runtime-native), it sustains concurrency where D's
   oneshot bridge could not. Confirms the bucket hash path (still base's spawned `hash_task`)
   was never the limiter — moving the XDR work alone off the orchestration task suffices.
+- **F (parse on `spawn_blocking`):** keeps the async gzip decode, moves only the XDR *parse*
+  onto `spawn_blocking` (bounded by a semaphore). Same ceiling — **10.6×** (1,259 s), 3336
+  MB/s, 31.5 cores, RSS 2,967 MB. A narrower variant of E (decode stays async) that confirms
+  the parse was the on-task CPU cost; equivalent result, runtime-native bridge.
+
+### 10.3 Winner
+
+**Winner: A (spawn per checkpoint).** Five strategies (A, B, C, E, F) are statistically tied
+— all reach the box's 32-core ceiling at **~10.5–10.6×** with wall times inside a **1% band**
+(1,258–1,269 s) and identical correctness. Throughput is therefore *not* the discriminator;
+the bottleneck is the hardware once decode leaves the orchestration task. The tiebreak is
+engineering quality:
+
+| candidate | change surface | concurrency knobs | RSS | notes |
+|-----------|----------------|-------------------|-----|-------|
+| **A** | one `tokio::spawn` in `pipeline.rs` (+Arc) | the existing `-c` semaphore (one knob) | 3135 MB | moves *all* per-cp work off-task in one place |
+| B | `JoinSet` per file + new file `Semaphore` | `-c` **and** file-sem | 2918 MB | finest grain; extra machinery, no speed gain |
+| C | rewrite decode in `verify.rs`+`xdr_verify.rs` | `-c` + decode-sem | 2944 MB | pulls C-toolchain flate2 into hot loop |
+| E | decode+parse `spawn` in `xdr_verify.rs` | `-c` (+ implicit) | **2871 MB** | leaves bucket path on a *different* mechanism |
+| F | parse `spawn_blocking` in `xdr_verify.rs` | `-c` + parse-sem | 2967 MB | narrower E; two mechanisms |
+| ~~D~~ | rayon pool + oneshot | — | 7–12 GB | **rejected** (1-way collapse) |
+
+A wins because it is the **smallest, most uniform** change: a single `tokio::spawn` of
+`process_checkpoint` lifts *every* per-checkpoint unit of work (bucket decode+hash, XDR
+decode+parse, cross-file verify) off the orchestration task at once, governed by the
+**single, pre-existing `-c` knob** — no second pool, semaphore, or decode-backend swap, and
+no split between bucket vs XDR mechanisms (E/F's wrinkle). It was the §9.6 Tier-0
+recommendation and it realises that prediction exactly. Its only measurable cost is ~0.2 GB
+more RSS than the leanest variant (E, 2.87 GB) — immaterial at this scale. E is the natural
+runner-up (lowest RSS, highest MB/s) and the best graft if RSS ever dominates.
+
+### 10.4 Capability graph — winner (A) vs base, throughput vs cores
+
+Method: the winner `bin/sa-a` and `bin/sa-base`, full 1×L10 (65,536 cp, verify), run to
+completion under CPU-affinity caps via `taskset --cpu-list 0..N-1` for N ∈ {4, 8, 16, 24,
+32}. Affinity (not tokio worker count) is used so *all* threads — async workers, blocking
+pool, allocator — are confined to N physical cores, giving a true throughput-vs-cores curve.
+Script: `scripts/perf/capability_graph.sh`. (Results table populated below as runs finish.)
