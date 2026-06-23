@@ -436,8 +436,8 @@ the 2,000-cp correctness gate with the identical broken-set signature
 | B spawn/file | JoinSet per file, global file `Semaphore` | 1,262 s (21.0 min) | **10.6×** | 3326 | **31.6** | 582 | 2918 MB | 0 |
 | C spawn_blocking decode | async read → `spawn_blocking` flate2+sha, `Semaphore` | 1,264 s (21.1 min) | **10.5×** | 3323 | 31.4† | 580 | 2944 MB | 0 |
 | D rayon decode pool | async read → `rayon::spawn` decode, oneshot | **REJECTED** — collapses to ~1-way (≈base) | ~1.1× | ~220–280 | ~0 | 1‡ | 7–12 GB‡ | 0 |
-| E parse-in-spawned-task | _running_ | | | | | | | |
-| F parse-on-spawn_blocking | _pending_ | | | | | | | |
+| E parse-in-spawned-task | decode+parse in a `tokio::spawn` (mpsc-fed) | 1,258 s (21.0 min) | **10.6×** | 3337 | 31.5 | 582 | **2871 MB** | 0 |
+| F parse-on-spawn_blocking | _running_ | | | | | | | |
 
 No-verify control (existence-only scan) is ~uniform: base = 312 s, 0.1 cores — confirms the
 orchestration walk itself is trivial; verify decode/hash is the entire cost.
@@ -496,3 +496,11 @@ orchestration walk itself is trivial; verify decode/hash is the entire cost.
     pool reached over a oneshot. (A full 65,536-cp D run was deliberately **not** executed: it
     would only reproduce ≈base wall over ~3.7 h and risk OOM as the mature-bucket tail holds
     multi-GB buffers against a near-idle decoder.)
+- **E (parse in spawned task):** moves the *whole* XDR decode+parse into a `tokio::spawn`ed
+  task (compressed chunks fed in over an mpsc), so both decode and parse leave the
+  orchestration task. Lands on the ceiling — **10.6×** (1,258 s), 3337 MB/s (the highest),
+  **31.5 cores**, and the **lowest RSS of any strategy (2,871 MB)** because the spawned task
+  decodes+parses streaming and releases buffers promptly rather than holding a fully
+  materialised body. Being `tokio::spawn` (runtime-native), it sustains concurrency where D's
+  oneshot bridge could not. Confirms the bucket hash path (still base's spawned `hash_task`)
+  was never the limiter — moving the XDR work alone off the orchestration task suffices.
