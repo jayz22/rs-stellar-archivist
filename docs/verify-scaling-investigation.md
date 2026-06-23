@@ -432,8 +432,8 @@ the 2,000-cp correctness gate with the identical broken-set signature
 | strat | mechanism | wall | speedup | mb/s | cores_mean | active_dec | peak_rss | fail |
 |-------|-----------|------|---------|------|-----------|-----------|----------|------|
 | base  | async decode on orchestration task | 13,320 s (3.70 h) | 1.0× | 315 | **1.9** | 566 | 2690 MB | 0 |
-| A spawn/checkpoint | _running_ | | | | | | | |
-| B spawn/file | _pending_ | | | | | | | |
+| A spawn/checkpoint | `tokio::spawn(process_checkpoint)`, Semaphore(-c) | 1,269 s (21.1 min) | **10.5×** | 3309 | **31.7** | 633 | 3135 MB | 0 |
+| B spawn/file | _running_ | | | | | | | |
 | C spawn_blocking decode | _pending_ | | | | | | | |
 | D rayon decode pool | _pending_ | | | | | | | |
 | E parse-in-spawned-task | _pending_ | | | | | | | |
@@ -447,3 +447,11 @@ orchestration walk itself is trivial; verify decode/hash is the entire cost.
   flight on average** — i.e. ~566 concurrent decode futures all polled on the single
   orchestration task, so wall is bounded by ~2 cores of CPU. 3.70 h for 1×L10. Matches the
   §9 root-cause diagnosis exactly at full scale.
+- **A (spawn per checkpoint):** moving each `process_checkpoint` onto its own
+  `tokio::spawn` (bounded by `Semaphore(-c)`) lifts mean cores from 1.9 → **31.7** (p50
+  31.7 — pinned at full 32-core saturation for the whole run) and cuts wall **10.5×**
+  (3.70 h → 21 min); throughput 315 → 3309 MB/s. RSS +0.4 GB (more live tasks). The
+  `XdrVerificationManager` `Mutex` did **not** become a visible ceiling at 32-way (cores
+  stay saturated, not stalled on the lock). No-verify unchanged (312 s, 0.4 cores) — the
+  fix is isolated to the verify decode path. **This is the direct realization of the §9
+  Tier-0 fix and the headline candidate.**
