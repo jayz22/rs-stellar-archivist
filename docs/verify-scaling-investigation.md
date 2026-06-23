@@ -563,3 +563,54 @@ at the same hardware because it actually uses the hardware.**
 § base is core-insensitive by construction (it never demands more than ~2 cores, so a cap of
 4–32 cannot constrain it). The 32-core point is the Phase-2 base run; a base@4 point is run
 to anchor the low end empirically (expected ≈315 MB/s — flat). [base@4: _running_]
+
+### 10.5 Why all five winners tie — and why C/RSS look the way they do (review Q&A)
+
+Two natural objections, answered with the per-phase CPU breakdown and the RSS data:
+
+**Q: C only moves *decode* off the orchestration task and leaves the XDR parse on it. How can
+that match A (which moves *everything* off)?**
+
+Because decode *is* essentially all the work. Per-phase CPU shares from the base 65,536-cp run
+(`PERF_PHASE`, sum-of-durations across all files):
+
+| phase | what it is | share |
+|-------|-----------|-------|
+| bucket_stream | bucket gzip **decode + SHA-256** | **66.5%** |
+| xdr_decompress | XDR gzip **decode** | **26.4%** |
+| history_fetch | network/IO | 7.0% |
+| xdr_parse_{ledger,tx,result} | **XDR parse + tx hashing** | **0.1%** |
+| cross_file_verify + chain_verify | the `XdrVerificationManager` work | 0.0% |
+
+Decode = **92.9%**; everything C leaves on the main task (XDR parse + verify) = **0.1%**. So C
+offloads ~93% of the CPU across 32 cores and the residual on-main work is far too small to
+bottleneck — `wall ≈ max(92.9%/32, 0.1%)` ⇒ ~32× headroom, hardware-bound, identical to A.
+
+A subtlety worth recording: in **base**, decode was *already* in spawned tasks — but those
+tasks were **fed chunk-by-chunk by the single orchestration task** through a 64-slot channel
+(`verify_bucket_maybe_write`, `decompress_and_write_internal`). The decoders starved on the
+serial feeder (RTM: ~500 "active" decodes, idle cores, empty run-queue). The strategies win by
+breaking that coupling, via two different mechanisms that reach the same ceiling:
+- **A** keeps base's chunk-channel decode but spawns each *checkpoint* as its own task, so the
+  *feed loops parallelize* (128 feeders instead of one).
+- **C/E/F** remove/relocate the feed: C bulk-reads the whole body then `spawn_blocking`s the
+  decode; E spawns the whole decode+parse; F spawns the parse.
+
+**Q: C bulk-reads the entire compressed bucket (`to_vec`) instead of streaming chunks — its
+RSS should be higher.**
+
+Directionally correct, and the data shows it: **C = 2944 MB vs base = 2690 MB (+254 MB,
++9.4%)** — that *is* the whole-body cost. It isn't dramatic, and isn't the worst, because:
+1. **Bounded concurrency** — in-flight files are capped by `-c=128`, so ≤~128 whole bodies are
+   resident at once (not all 773k).
+2. **Small-bucket-dominated** — the 1×L10 range is mostly small incremental buckets; huge
+   mature buckets are a minority, so the average whole-body buffer is small.
+3. **Prompt release** — C's `spawn_blocking` decode keeps pace, so each buffer is freed quickly
+   rather than accumulating. Direct proof: on the worst-case mature-bucket range, **C held
+   2.4 GB while D held 11.8 GB** for the *same* whole-body read — the difference is purely
+   whether the decoder drains the buffers (C drains; D's bridge stalled).
+4. **A is actually the highest (3135 MB)** despite using base's chunk decode, because spawning
+   whole checkpoints holds many files' state at once. RSS ≈ (bytes per in-flight unit) × (units
+   in flight): C trades more-bytes-per-file for fewer-files; A the reverse — they nearly cancel
+   at ~2.9–3.1 GB. The leanest is **E** (2871 MB), which streams decode+parse and releases as
+   it goes.
