@@ -139,8 +139,45 @@ async fn verify_bucket_maybe_write(
 /// decode (commit 4a2c6f3, "not for merge as-is") is parked; see
 /// `docs/verify-scaling-investigation.md` §4 for the async-vs-sync decision.
 pub async fn verify_bucket_stream(path: &str, reader: Reader) -> Result<(), StorageError> {
-    debug!("Verifying bucket hash for {}", path);
-    verify_bucket_maybe_write(path, reader, None).await
+    debug!("Verifying bucket hash for {} (rayon decode)", path);
+    let _g = crate::phase!(crate::metrics::Phase::BucketStream);
+    let expected = bucket_hash_from_path(path)
+        .ok_or_else(|| StorageError::fatal(format!("Invalid bucket path: {}", path)))?;
+    // FEED (async I/O): read the whole compressed body.
+    let compressed = reader
+        .read(..)
+        .await
+        .map_err(|e| from_opendal_error(e, &format!("Failed to read {}", path)))?
+        .to_vec();
+    let path_owned = path.to_string();
+    // DECODE + HASH on the rayon CPU pool (off the async workers).
+    let (actual, n) = crate::decode_pool::run(move || {
+        use std::io::Read as _;
+        let mut dec = flate2::read::GzDecoder::new(std::io::Cursor::new(compressed));
+        let mut hasher = Sha256::new();
+        let mut buf = vec![0u8; HASH_BUFFER_SIZE];
+        let mut n: u64 = 0;
+        loop {
+            let k = dec.read(&mut buf)?;
+            if k == 0 {
+                break;
+            }
+            hasher.update(&buf[..k]);
+            n += k as u64;
+        }
+        Ok::<_, std::io::Error>((hex::encode(hasher.finalize()), n))
+    })
+    .await
+    .map_err(|e| StorageError::retry(format!("decompress failed {}: {}", path_owned, e)))?;
+    if actual != expected {
+        return Err(StorageError::fatal(format!(
+            "Hash mismatch for {}: expected {}, got {}",
+            path, expected, actual
+        )));
+    }
+    crate::metrics::add_bytes(crate::metrics::Phase::BucketStream, n);
+    crate::metrics::record_file(n);
+    Ok(())
 }
 
 /// Verify and write a bucket file (mirror operation).

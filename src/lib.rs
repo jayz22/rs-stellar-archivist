@@ -43,6 +43,7 @@ pub mod storage;
 pub mod utils;
 pub mod verify;
 pub mod xdr_verify;
+mod decode_pool;
 
 #[cfg(feature = "cli")]
 pub mod cli;

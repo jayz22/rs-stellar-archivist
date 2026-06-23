@@ -64,6 +64,7 @@ thiserror = { version = "1.0" }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "ansi"], optional = true }
 futures-util = { version = "0.3" }
+rayon = { version = "1" }
 url = { version = "2.5" }
 async-trait = "0.1"
 tokio-util = { version = "0.7.16", features = ["compat", "io", "io-util"] }

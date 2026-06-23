@@ -837,13 +837,25 @@ pub(crate) fn parse_result_entries_for_checkpoint(
     Ok(hashes)
 }
 
-/// Decompress a gzipped reader into an in-memory `Vec<u8>`. No write side —
-/// thin wrapper over [`decompress_and_write_internal`] with `writer = None`.
+/// Decompress a gzipped reader into an in-memory `Vec<u8>` (Strategy D): read the
+/// compressed bytes async, then gzip-decode on the rayon CPU pool. The XDR *parse* stays
+/// on the caller (D isolates decode). Mirror write path keeps using
+/// `decompress_and_write_internal` directly.
 async fn decompress_to_buffer(path: &str, reader: Reader) -> Result<Vec<u8>, StorageError> {
-    // the writer is None, thus the return sink is also None, which is safe to
-    // be discarded
-    let (decompressed, _) = decompress_and_write_internal(path, reader, None).await?;
-    Ok(decompressed)
+    let compressed = reader
+        .read(..)
+        .await
+        .map_err(|e| from_opendal_error(e, &format!("read {}", path)))?
+        .to_vec();
+    let p = path.to_string();
+    crate::decode_pool::run(move || {
+        use std::io::Read as _;
+        let mut dec = flate2::read::GzDecoder::new(Cursor::new(compressed));
+        let mut out = Vec::new();
+        dec.read_to_end(&mut out).map(|_| out)
+    })
+    .await
+    .map_err(|e| StorageError::retry(format!("decompress {}: {}", p, e)))
 }
 
 /// Decompress a gzipped ledger file from a reader and parse it.
