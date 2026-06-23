@@ -546,7 +546,7 @@ Script: `scripts/perf/capability_graph.sh`; plot: `scripts/perf/plot_capability.
 
 | cores (cap) | A wall | A MB/s | A cores used | MB/s per core | base MB/s | base cores used |
 |-------------|--------|--------|--------------|---------------|-----------|-----------------|
-| 4  | 9,328 s | 450  | 4.0  | 113 | ~315§ | ~1.9 |
+| 4  | 9,328 s | 450  | 4.0  | 113 | **288** | 2.0 |
 | 8  | 4,621 s | 909  | 8.0  | 114 | — | — |
 | 16 | 2,309 s | 1,818 | 15.9 | 114 | — | — |
 | 24 | 1,550 s | 2,709 | 23.9 | 113 | — | — |
@@ -556,45 +556,69 @@ Script: `scripts/perf/capability_graph.sh`; plot: `scripts/perf/plot_capability.
 1:1 (4.0/8.0/15.9/23.9/31.7) and MB/s per core is flat at ~113 from 4→24 cores, i.e. ~92%
 of ideal-linear at 32 (the only sub-linear point — expected as the last cores share
 SMT/memory bandwidth). 4→32 cores = **7.4× throughput**. base, by contrast, is a horizontal
-line: it pins at ~1.9 cores and ~315 MB/s no matter how many cores it is given — the §9
+line: **288 MB/s at 4 cores, 315 at 32** — it pins at ~2 cores regardless, the §9
 serial-orchestration ceiling. The gap at 32 cores is the headline result: **A is 10.5× base
 at the same hardware because it actually uses the hardware.**
 
 § base is core-insensitive by construction (it never demands more than ~2 cores, so a cap of
-4–32 cannot constrain it). The 32-core point is the Phase-2 base run; a base@4 point is run
-to anchor the low end empirically (expected ≈315 MB/s — flat). [base@4: _running_]
+4–32 cannot constrain it — the slight 288→315 rise just reflects base's rare bursts above 4
+cores). Two empirical points (4 and 32) anchor the flat line; intermediate caps were not run
+(they would only redraw the same horizontal at ~3.7 h each).
 
 ### 10.5 Why all five winners tie — and why C/RSS look the way they do (review Q&A)
 
-Two natural objections, answered with the per-phase CPU breakdown and the RSS data:
+> **Correction (supersedes an earlier draft of this section).** An earlier version claimed,
+> from the `PERF_PHASE` percentages, that "decode is 92.9% of CPU and the XDR parse C leaves
+> on the main task is only 0.1%." **That split is an instrumentation artifact and is
+> retracted.** The `phase!` timer records the **wall-clock `elapsed()` of each scope on drop**,
+> `fetch_add`-summed across all concurrent invocations, and prints `pct = phase_ns /
+> Σ phase_ns`. Two problems make it useless as a CPU breakdown: (1) the decode scopes
+> (`bucket_stream`, `xdr_decompress`) wrap `.await` points, so they accumulate **starvation /
+> wait time**, not CPU — in base, `bucket_stream` averages **10.9 s per call**, almost all of
+> it waiting; (2) it normalises to itself, so the wait-bloated decode scopes crowd everything
+> else toward 0%. The parse is therefore **not** negligible.
 
 **Q: C only moves *decode* off the orchestration task and leaves the XDR parse on it. How can
 that match A (which moves *everything* off)?**
 
-Because decode *is* essentially all the work. Per-phase CPU shares from the base 65,536-cp run
-(`PERF_PHASE`, sum-of-durations across all files):
+The honest answer, from unperturbed wall-clock + core measurements (not the phase %):
 
-| phase | what it is | share |
-|-------|-----------|-------|
-| bucket_stream | bucket gzip **decode + SHA-256** | **66.5%** |
-| xdr_decompress | XDR gzip **decode** | **26.4%** |
-| history_fetch | network/IO | 7.0% |
-| xdr_parse_{ledger,tx,result} | **XDR parse + tx hashing** | **0.1%** |
-| cross_file_verify + chain_verify | the `XdrVerificationManager` work | 0.0% |
+- The XDR **parse is real, non-trivial CPU** — on the order of ~0.2 s per checkpoint on
+  mature-bucket data (`parse_*_entries_for_checkpoint` is synchronous). It is *not* 0.1% of
+  the work.
+- **base serialises the per-file CPU** (the decode *feed* loop + the parse) on the single
+  `for_each_concurrent` orchestration task. Measured on a 2,000-cp slice: base = **527 s at
+  2.2 cores**; the parse alone accounts for the bulk of its one active core. This is the §9
+  ceiling.
+- The winning strategies get that per-file CPU **running concurrently across cores**. Same
+  2,000-cp slice: C = **71.8 s at 23.4 cores** (verified, unprobed, reproduced twice). Serial
+  parse of 2,000 checkpoints could not fit in 71.8 s on one thread — so the real binary
+  demonstrably spreads decode **and** parse across cores, even though C's source only changed
+  the decode call. (Plausible mechanism: removing the serial chunk-feed lets the orchestration
+  task dispatch fast enough that the runtime spreads the remaining per-checkpoint work; A makes
+  it explicit by spawning each checkpoint.)
+- This is corroborated by **C ≈ E ≈ F** (all ~10.5–10.6×): C leaves parse on the caller, E
+  moves decode+parse into a `tokio::spawn`, F moves the parse to `spawn_blocking`. If parse
+  *location* were the bottleneck, E/F would beat C. They don't — so parse placement is not the
+  limiter once the work is no longer pinned behind the serial feed.
 
-Decode = **92.9%**; everything C leaves on the main task (XDR parse + verify) = **0.1%**. So C
-offloads ~93% of the CPU across 32 cores and the residual on-main work is far too small to
-bottleneck — `wall ≈ max(92.9%/32, 0.1%)` ⇒ ~32× headroom, hardware-bound, identical to A.
+**Instrumentation caveat (documented honestly):** attempts to measure the exact decode-vs-parse
+CPU split and the parse thread-distribution **perturbed the hot path ~8×** (adding per-call
+timing/`eprintln` serialised it — an observer effect; the real `bin/sa-c` runs the slice in
+71.8 s, the probe build in 558 s). So a precise per-phase **CPU** attribution is not available
+from this harness, and is left open. What is robust and unperturbed is the **outcome**: base
+≈ 2 cores / serial, winners ≈ 23–31 cores / parallel, identical correctness — which is all the
+winner decision depends on.
 
-A subtlety worth recording: in **base**, decode was *already* in spawned tasks — but those
-tasks were **fed chunk-by-chunk by the single orchestration task** through a 64-slot channel
-(`verify_bucket_maybe_write`, `decompress_and_write_internal`). The decoders starved on the
-serial feeder (RTM: ~500 "active" decodes, idle cores, empty run-queue). The strategies win by
-breaking that coupling, via two different mechanisms that reach the same ceiling:
-- **A** keeps base's chunk-channel decode but spawns each *checkpoint* as its own task, so the
-  *feed loops parallelize* (128 feeders instead of one).
-- **C/E/F** remove/relocate the feed: C bulk-reads the whole body then `spawn_blocking`s the
-  decode; E spawns the whole decode+parse; F spawns the parse.
+Mechanism summary — base's decoders were already `tokio::spawn`'d but **fed chunk-by-chunk by
+the single orchestration task** through a 64-slot channel (`verify_bucket_maybe_write`,
+`decompress_and_write_internal`), and the parse ran synchronously on that same task; both are
+serial there. The strategies break the coupling differently but reach the same ceiling:
+- **A** spawns each *checkpoint* as its own task → the whole per-checkpoint pipeline (feed +
+  decode + parse) parallelises.
+- **C/E/F** relocate the decode (C: bulk-read + `spawn_blocking`; E: `tokio::spawn` decode+parse;
+  F: `spawn_blocking` parse), which unblocks the orchestration task and lets the per-file work
+  spread across cores.
 
 **Q: C bulk-reads the entire compressed bucket (`to_vec`) instead of streaming chunks — its
 RSS should be higher.**
