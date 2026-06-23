@@ -16,6 +16,16 @@ use tracing::debug;
 const HASH_BUFFER_SIZE: usize = 64 * 1024;
 const CHANNEL_CAPACITY: usize = 64;
 
+/// Strategy C: bound concurrent CPU decode jobs to ~cores so the (512-thread) blocking
+/// pool isn't oversubscribed. Shared by the bucket and xdr decode paths.
+pub(crate) fn decode_sem() -> &'static tokio::sync::Semaphore {
+    static S: std::sync::OnceLock<tokio::sync::Semaphore> = std::sync::OnceLock::new();
+    S.get_or_init(|| {
+        let n = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8);
+        tokio::sync::Semaphore::new(n)
+    })
+}
+
 /// Decompress and hash the given reader's content and verify it against the expected hash.
 /// If `writer` is provided, compressed bytes are written to it while verifying.
 async fn verify_bucket_maybe_write(
@@ -139,8 +149,48 @@ async fn verify_bucket_maybe_write(
 /// decode (commit 4a2c6f3, "not for merge as-is") is parked; see
 /// `docs/verify-scaling-investigation.md` §4 for the async-vs-sync decision.
 pub async fn verify_bucket_stream(path: &str, reader: Reader) -> Result<(), StorageError> {
-    debug!("Verifying bucket hash for {}", path);
-    verify_bucket_maybe_write(path, reader, None).await
+    debug!("Verifying bucket hash for {} (blocking-pool decode)", path);
+    let _g = crate::phase!(crate::metrics::Phase::BucketStream);
+    let expected = bucket_hash_from_path(path)
+        .ok_or_else(|| StorageError::fatal(format!("Invalid bucket path: {}", path)))?;
+    // FEED (async I/O, off the blocking pool): pull the whole compressed body.
+    let compressed = reader
+        .read(..)
+        .await
+        .map_err(|e| from_opendal_error(e, &format!("Failed to read {}", path)))?
+        .to_vec();
+    let path_owned = path.to_string();
+    let _permit = decode_sem().acquire().await.unwrap();
+    // DECODE + HASH (pure CPU on the tokio blocking pool).
+    let (actual, n) = tokio::task::spawn_blocking(move || {
+        use std::io::Read as _;
+        let _dg = crate::metrics::DecodeGuard::enter();
+        let mut dec = flate2::read::GzDecoder::new(std::io::Cursor::new(compressed));
+        let mut hasher = Sha256::new();
+        let mut buf = vec![0u8; HASH_BUFFER_SIZE];
+        let mut n: u64 = 0;
+        loop {
+            let k = dec.read(&mut buf)?;
+            if k == 0 {
+                break;
+            }
+            hasher.update(&buf[..k]);
+            n += k as u64;
+        }
+        Ok::<_, std::io::Error>((hex::encode(hasher.finalize()), n))
+    })
+    .await
+    .map_err(|e| StorageError::fatal(format!("hash task panicked {}: {}", path_owned, e)))?
+    .map_err(|e| StorageError::retry(format!("decompress failed {}: {}", path_owned, e)))?;
+    if actual != expected {
+        return Err(StorageError::fatal(format!(
+            "Hash mismatch for {}: expected {}, got {}",
+            path, expected, actual
+        )));
+    }
+    crate::metrics::add_bytes(crate::metrics::Phase::BucketStream, n);
+    crate::metrics::record_file(n);
+    Ok(())
 }
 
 /// Verify and write a bucket file (mirror operation).
