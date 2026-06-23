@@ -198,7 +198,7 @@ async fn test_run_checkpoints_empty_iter_is_noop() {
     let (op, state) = TestOperation::new((63, 63));
     let pipeline = Pipeline::new(op, make_config(1), stub_storage(), None, None);
 
-    pipeline
+    std::sync::Arc::new(pipeline)
         .run_checkpoints(Vec::<u32>::new())
         .await
         .expect("empty run should succeed");
@@ -219,7 +219,7 @@ async fn test_run_checkpoints_single_cp() {
     let (op, state) = TestOperation::new((63, 63));
     let pipeline = Pipeline::new(op, make_config(1), stub_storage(), None, None);
 
-    pipeline.run_checkpoints(vec![63]).await.unwrap();
+    std::sync::Arc::new(pipeline).run_checkpoints(vec![63]).await.unwrap();
 
     let s = state.lock().unwrap();
     // skip_optional=true → 3 per-cp files (ledger, transactions, results).
@@ -244,7 +244,7 @@ async fn test_run_checkpoints_disjoint_cps() {
     let pipeline = Pipeline::new(op, make_config(2), stub_storage(), None, None);
 
     // Disjoint, non-consecutive cps.
-    pipeline.run_checkpoints(vec![63, 575, 4095]).await.unwrap();
+    std::sync::Arc::new(pipeline).run_checkpoints(vec![63, 575, 4095]).await.unwrap();
 
     let s = state.lock().unwrap();
     assert_eq!(s.process_object_calls.len(), 9, "3 cps × 3 files = 9 calls");
@@ -264,7 +264,7 @@ async fn test_run_checkpoints_does_not_call_finalize() {
     let (op, state) = TestOperation::new((0, 0));
     let pipeline = Pipeline::new(op, make_config(1), stub_storage(), None, None);
 
-    pipeline.run_checkpoints(vec![63, 127]).await.unwrap();
+    std::sync::Arc::new(pipeline).run_checkpoints(vec![63, 127]).await.unwrap();
 
     let s = state.lock().unwrap();
     assert!(
@@ -295,7 +295,7 @@ async fn test_run_checkpoints_respects_concurrency() {
     let pipeline = Pipeline::new(op, make_config(2), stub_storage(), None, None);
 
     // 4 cps with concurrency=2 → peak in-flight should be exactly 2.
-    pipeline
+    std::sync::Arc::new(pipeline)
         .run_checkpoints(vec![63, 127, 191, 255])
         .await
         .unwrap();

@@ -11,12 +11,13 @@ use crate::{
     xdr_verify::XdrVerificationManager,
 };
 use futures_util::{
-    future::{join, join3, join_all, OptionFuture},
+    future::{join, join_all},
     stream, StreamExt,
 };
 use lru::LruCache;
 use opendal::Buffer;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use tokio::sync::Semaphore;
 use thiserror::Error;
 use tracing::{debug, error, info, warn};
 
@@ -242,6 +243,8 @@ pub struct Pipeline<Op: Operation> {
     /// `operation.finalize`. Owned solely by the pipeline (not per-stats) so
     /// sub-stats can't disagree about where the report goes.
     report_path: Option<std::path::PathBuf>,
+    /// Strategy B: bounds total in-flight per-file tasks (≈ concurrency × fan-out).
+    file_semaphore: Arc<Semaphore>,
 }
 
 impl<Op: Operation> Pipeline<Op> {
@@ -258,6 +261,8 @@ impl<Op: Operation> Pipeline<Op> {
         let bucket_lru = Mutex::new(LruCache::new(
             std::num::NonZeroUsize::new(BUCKET_LRU_CACHE_SIZE).unwrap(),
         ));
+        let file_semaphore =
+            Arc::new(Semaphore::new(config.concurrency.saturating_mul(8).max(64)));
 
         Self {
             operation,
@@ -268,6 +273,7 @@ impl<Op: Operation> Pipeline<Op> {
             bucket_lru,
             verification_manager,
             report_path,
+            file_semaphore,
         }
     }
 
@@ -289,14 +295,18 @@ impl<Op: Operation> Pipeline<Op> {
             .await?;
 
         let total_count = history_format::count_checkpoints_in_range(lower_bound, upper_bound);
+        let this = Arc::new(self);
         if total_count != 0 {
             let checkpoints =
                 (lower_bound..=upper_bound).step_by(history_format::CHECKPOINT_FREQUENCY as usize);
-            self.run_checkpoints(checkpoints).await?;
+            Arc::clone(&this).run_checkpoints(checkpoints).await?;
         } else {
             info!("No checkpoints to process");
         }
-        self.finish(upper_bound).await
+        Arc::try_unwrap(this)
+            .unwrap_or_else(|_| unreachable!("pipeline still shared after run_checkpoints"))
+            .finish(upper_bound)
+            .await
     }
 
     /// Run the pipeline over an explicit set of checkpoints (possibly
@@ -307,7 +317,7 @@ impl<Op: Operation> Pipeline<Op> {
     /// Callers that want the full lifecycle should use [`Self::run`] (or
     /// pair `run_checkpoints` with an explicit `finish`).
     /// An empty input is a no-op.
-    pub async fn run_checkpoints<I>(&self, cps: I) -> Result<(), Error>
+    pub async fn run_checkpoints<I>(self: Arc<Self>, cps: I) -> Result<(), Error>
     where
         I: IntoIterator<Item = u32>,
     {
@@ -323,15 +333,21 @@ impl<Op: Operation> Pipeline<Op> {
         let num_completed = std::sync::atomic::AtomicUsize::new(0);
         let completed_ref = &num_completed;
 
+        // Strategy B: the checkpoint loop stays cooperative on this task; each
+        // checkpoint spawns its FILES (process_checkpoint, below). So feed+decode+parse
+        // run per-file on the worker pool; the checkpoint task does HAS discovery + joins.
         stream::iter(cps)
-            .for_each_concurrent(self.config.concurrency, |ck| async move {
-                self.process_checkpoint(ck).await;
-                let done = completed_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                if done.is_multiple_of(PROGRESS_REPORTING_FREQUENCY) || total == Some(done) {
-                    if let Some(total) = total {
-                        info!("Progress: {done}/{total} checkpoints processed");
-                    } else {
-                        info!("Progress: {done} checkpoints processed");
+            .for_each_concurrent(self.config.concurrency, |ck| {
+                let me = Arc::clone(&self);
+                async move {
+                    me.process_checkpoint(ck).await;
+                    let done = completed_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                    if done.is_multiple_of(PROGRESS_REPORTING_FREQUENCY) || total == Some(done) {
+                        if let Some(total) = total {
+                            info!("Progress: {done}/{total} checkpoints processed");
+                        } else {
+                            info!("Progress: {done} checkpoints processed");
+                        }
                     }
                 }
             })
@@ -375,31 +391,55 @@ impl<Op: Operation> Pipeline<Op> {
     /// `Pipeline<MirrorOperation>` to re-mirror failed checkpoints) can drive
     /// the pipeline machinery directly without `Pipeline::run`'s full bounds +
     /// iteration loop.
-    pub async fn process_checkpoint(&self, checkpoint: u32) {
-        // Always: the three required per-cp xdr files.
-        let cats = join_all(
-            ["ledger", "transactions", "results"]
-                .map(|cat| self.process_file(checkpoint, checkpoint_path(cat, checkpoint))),
-        );
+    pub async fn process_checkpoint(self: Arc<Self>, checkpoint: u32) {
+        use tokio::task::JoinSet;
 
-        // Optional: SCP file. Skipped when `skip_optional` is set.
-        let scp: OptionFuture<_> = (!self.config.skip_optional)
-            .then(|| self.process_file(checkpoint, checkpoint_path("scp", checkpoint)))
-            .into();
+        // Collect every file path this checkpoint must process. Category files always;
+        // SCP unless skipped; buckets discovered from the HAS file (deduped under the LRU).
+        // HAS fetch + history write + bucket discovery stay inline (cheap; gate the spawns).
+        let mut paths: Vec<String> = ["ledger", "transactions", "results"]
+            .into_iter()
+            .map(|cat| checkpoint_path(cat, checkpoint))
+            .collect();
+        if !self.config.skip_optional {
+            paths.push(checkpoint_path("scp", checkpoint));
+        }
+        if !self.config.skip_history_and_buckets {
+            if let Some((state, buffer)) = self.fetch_history_file_state(checkpoint).await {
+                let history_path = checkpoint_path("history", checkpoint);
+                self.process_history_file(checkpoint, &history_path, buffer).await;
+                let mut cache = self.bucket_lru.lock().unwrap();
+                for bucket in state.buckets().iter() {
+                    if cache.put(bucket.clone(), ()).is_none() {
+                        if let Ok(p) = bucket_path(bucket) {
+                            paths.push(p);
+                        }
+                    }
+                }
+            }
+        }
 
-        // Optional: HAS fetch + bucket discovery + bucket fetches. Skipped
-        // by repair's `retry_failed_checkpoints` inner pipeline (chain
-        // repair only needs the per-cp xdr files; bucket / HAS work is
-        // handled by `retry_failed_files`).
-        let history: OptionFuture<_> = (!self.config.skip_history_and_buckets)
-            .then(|| self.process_history_and_buckets(checkpoint))
-            .into();
+        // Spawn each file as its own task (feed + decode + parse + hash run in parallel
+        // across the worker pool); bound total in-flight files with the file semaphore.
+        let mut set: JoinSet<()> = JoinSet::new();
+        for path in paths {
+            let me = Arc::clone(&self);
+            let sem = self.file_semaphore.clone();
+            set.spawn(async move {
+                let _permit = sem.acquire_owned().await.unwrap();
+                me.process_file(checkpoint, path).await;
+            });
+        }
+        while let Some(res) = set.join_next().await {
+            if let Err(e) = res {
+                if e.is_panic() {
+                    std::panic::resume_unwind(e.into_panic());
+                }
+                error!("file task cancelled in cp {checkpoint}: {e}");
+            }
+        }
 
-        let _ = join3(cats, scp, history).await;
-
-        // Per-cp manager release: drive `verify_and_release` for this cp's
-        // accumulated per-file data. Triggers intra-cp completeness, tx/result
-        // hash cross-checks, and the internal hash chain check.
+        // Per-cp manager release (intra-cp completeness, tx/result hash cross-checks, chain).
         if let Some(manager) = &self.verification_manager {
             manager.verify_and_release(checkpoint);
         }
