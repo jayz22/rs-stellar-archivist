@@ -848,15 +848,30 @@ async fn decompress_to_buffer(path: &str, reader: Reader) -> Result<Vec<u8>, Sto
 
 /// Decompress a gzipped ledger file from a reader and parse it.
 /// Infers the checkpoint number from the file path for range validation.
+/// Strategy F: bound concurrent CPU parse jobs to ~cores (they run on the 512-thread
+/// blocking pool). The async gzip decode (`decompress_to_buffer`) is unchanged — F
+/// offloads ONLY the synchronous XDR parse + hash off the orchestration task.
+fn parse_sem() -> &'static tokio::sync::Semaphore {
+    static S: std::sync::OnceLock<tokio::sync::Semaphore> = std::sync::OnceLock::new();
+    S.get_or_init(|| {
+        let n = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8);
+        tokio::sync::Semaphore::new(n)
+    })
+}
+
 pub async fn parse_ledger_header_stream(
     path: &str,
     reader: Reader,
 ) -> Result<BTreeMap<u32, LedgerHeaderVerificationData>, StorageError> {
     let decompressed = decompress_to_buffer(path, reader).await?;
-    parse_ledger_header_entries_for_checkpoint(
-        &decompressed,
-        history_format::checkpoint_from_path(path),
-    )
+    let cp = history_format::checkpoint_from_path(path);
+    let _permit = parse_sem().acquire().await.unwrap();
+    tokio::task::spawn_blocking(move || {
+        let _dg = crate::metrics::DecodeGuard::enter();
+        parse_ledger_header_entries_for_checkpoint(&decompressed, cp)
+    })
+    .await
+    .map_err(|e| StorageError::fatal(format!("parse task panicked {}: {}", path, e)))?
 }
 
 /// Decompress a gzipped result file from a reader and parse it.
@@ -866,7 +881,14 @@ pub async fn parse_results_stream(
     reader: Reader,
 ) -> Result<BTreeMap<u32, Hash>, StorageError> {
     let decompressed = decompress_to_buffer(path, reader).await?;
-    parse_result_entries_for_checkpoint(&decompressed, history_format::checkpoint_from_path(path))
+    let cp = history_format::checkpoint_from_path(path);
+    let _permit = parse_sem().acquire().await.unwrap();
+    tokio::task::spawn_blocking(move || {
+        let _dg = crate::metrics::DecodeGuard::enter();
+        parse_result_entries_for_checkpoint(&decompressed, cp)
+    })
+    .await
+    .map_err(|e| StorageError::fatal(format!("parse task panicked {}: {}", path, e)))?
 }
 
 /// Parse decompressed transaction XDR data, computing content hashes per ledger.
@@ -952,10 +974,14 @@ pub async fn parse_transactions_stream(
     reader: Reader,
 ) -> Result<BTreeMap<u32, Hash>, StorageError> {
     let decompressed = decompress_to_buffer(path, reader).await?;
-    parse_transaction_entries_for_checkpoint(
-        &decompressed,
-        history_format::checkpoint_from_path(path),
-    )
+    let cp = history_format::checkpoint_from_path(path);
+    let _permit = parse_sem().acquire().await.unwrap();
+    tokio::task::spawn_blocking(move || {
+        let _dg = crate::metrics::DecodeGuard::enter();
+        parse_transaction_entries_for_checkpoint(&decompressed, cp)
+    })
+    .await
+    .map_err(|e| StorageError::fatal(format!("parse task panicked {}: {}", path, e)))?
 }
 
 /// Decompress a gzipped SCP file from a reader and validate its frame structure.
