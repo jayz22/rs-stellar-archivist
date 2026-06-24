@@ -6,3 +6,8 @@
 !.github
 !.devcontainer
 !testdata/**/.well-known
+
+# Perf harness artifacts (scripts/perf, local-test)
+/perf-results/
+/bin/
+/local-test/stellar-archivist
