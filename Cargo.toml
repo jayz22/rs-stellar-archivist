@@ -16,6 +16,9 @@ name = "stellar_archivist"
 default = ["cli", "opendal-all"]
 cli = ["dep:clap", "dep:tracing-subscriber"]
 
+# Perf testing only (NOT for production; off by default, compiled out otherwise).
+perf-metrics = ["dep:libc"]
+
 # OpenDAL-based storage backends (fs and http are always enabled)
 opendal-s3 = ["opendal/services-s3"]
 opendal-gcs = ["opendal/services-gcs"]
@@ -62,6 +65,8 @@ async-compression = { version = "0.4", features = ["tokio", "gzip"] }
 flate2 = "1.1.9"
 hex = "0.4"
 tokio-stream = "0.1"
+# Perf testing only (optional; pulled in by perf-metrics).
+libc = { version = "0.2", optional = true }
 
 [dev-dependencies]
 tempfile = { version = "3.5.0" }

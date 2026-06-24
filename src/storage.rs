@@ -101,6 +101,7 @@ pub trait Storage: Send + Sync {
     /// Streams data in chunks without buffering the entire file in memory.
     /// Only supported by writable backends (e.g., filesystem).
     async fn copy_from_reader(&self, object: &str, reader: Reader) -> Result<(), Error> {
+        let _g = crate::phase!(crate::metrics::Phase::Copy);
         let writer = self.open_writer(object).await?;
 
         // Convert reader to a stream of Buffer chunks (zero-copy)
@@ -110,13 +111,21 @@ pub trait Storage: Send + Sync {
             .await
             .map_err(|e| from_opendal_error(e, &format!("Failed to create stream for {object}")))?;
 
+        let mut copied_bytes = 0u64;
         let mut sink = writer.into_sink();
-        sink.send_all(&mut stream)
-            .await
-            .map_err(|e| from_opendal_error(e, &format!("Failed to write data to {object}")))?;
+        while let Some(result) = stream.next().await {
+            let buffer = result
+                .map_err(|e| from_opendal_error(e, &format!("Failed to read data for {object}")))?;
+            copied_bytes += buffer.len() as u64;
+            sink.send(buffer)
+                .await
+                .map_err(|e| from_opendal_error(e, &format!("Failed to write data to {object}")))?;
+        }
         sink.close()
             .await
             .map_err(|e| from_opendal_error(e, &format!("Failed to close writer for {object}")))?;
+        crate::metrics::add_bytes(crate::metrics::Phase::Copy, copied_bytes);
+        crate::metrics::record_file(copied_bytes);
         Ok(())
     }
 
@@ -297,7 +306,7 @@ impl OpendalStore {
         root_path: &Path,
         object: &str,
         reader: Reader,
-    ) -> Result<(), Error> {
+    ) -> Result<u64, Error> {
         let object = object.trim_start_matches('/');
         let file_path = root_path.join(object);
         let tmp_path = file_path.with_added_extension("tmp");
@@ -323,10 +332,12 @@ impl OpendalStore {
             .await
             .map_err(|e| from_opendal_error(e, &format!("Failed to create stream for {object}")))?;
 
-        let write_result: Result<(), Error> = async {
+        let write_result: Result<u64, Error> = async {
+            let mut copied_bytes = 0u64;
             while let Some(result) = stream.next().await {
                 let buffer =
                     result.map_err(|e| from_opendal_error(e, "Failed to read from source"))?;
+                copied_bytes += buffer.len() as u64;
                 for bytes in buffer {
                     file.write_all(&bytes).await.map_err(|e| {
                         from_io_error(e, &format!("Failed to write to {}", tmp_path.display()))
@@ -336,14 +347,17 @@ impl OpendalStore {
             file.flush().await.map_err(|e| {
                 from_io_error(e, &format!("Failed to flush {}", tmp_path.display()))
             })?;
-            Ok(())
+            Ok(copied_bytes)
         }
         .await;
 
-        if let Err(e) = write_result {
-            let _ = tokio::fs::remove_file(&tmp_path).await;
-            return Err(e);
-        }
+        let copied_bytes = match write_result {
+            Ok(copied_bytes) => copied_bytes,
+            Err(e) => {
+                let _ = tokio::fs::remove_file(&tmp_path).await;
+                return Err(e);
+            }
+        };
 
         if let Err(e) = tokio::fs::rename(&tmp_path, &file_path).await {
             let _ = tokio::fs::remove_file(&tmp_path).await;
@@ -357,7 +371,7 @@ impl OpendalStore {
             ));
         }
 
-        Ok(())
+        Ok(copied_bytes)
     }
 
     // ===== Filesystem Backend =====
@@ -741,13 +755,17 @@ impl Storage for OpendalStore {
     }
 
     async fn copy_from_reader(&self, object: &str, reader: Reader) -> Result<(), Error> {
+        let _g = crate::phase!(crate::metrics::Phase::Copy);
         // If we have a filesystem root and atomic writes are disabled, use direct tokio::fs writes
         // to bypass OpenDAL's WriteGenerator buffering and avoid the fsync in close().
         if let Some(root_path) = &self.root_path {
             if !self.atomic_file_writes {
-                return self
+                let copied_bytes = self
                     .copy_from_reader_direct(root_path, object, reader)
-                    .await;
+                    .await?;
+                crate::metrics::add_bytes(crate::metrics::Phase::Copy, copied_bytes);
+                crate::metrics::record_file(copied_bytes);
+                return Ok(());
             }
         }
 
@@ -760,15 +778,23 @@ impl Storage for OpendalStore {
             .await
             .map_err(|e| from_opendal_error(e, &format!("Failed to create stream for {object}")))?;
 
+        let mut copied_bytes = 0u64;
         let mut sink = writer.into_sink();
-        sink.send_all(&mut stream)
-            .await
-            .map_err(|e| from_opendal_error(e, &format!("Failed to write data to {object}")))?;
+        while let Some(result) = stream.next().await {
+            let buffer = result
+                .map_err(|e| from_opendal_error(e, &format!("Failed to read data for {object}")))?;
+            copied_bytes += buffer.len() as u64;
+            sink.send(buffer)
+                .await
+                .map_err(|e| from_opendal_error(e, &format!("Failed to write data to {object}")))?;
+        }
 
         // Always call close() when using OpenDAL writer - it's required to flush internal buffers
         sink.close()
             .await
             .map_err(|e| from_opendal_error(e, &format!("Failed to close writer for {object}")))?;
+        crate::metrics::add_bytes(crate::metrics::Phase::Copy, copied_bytes);
+        crate::metrics::record_file(copied_bytes);
         Ok(())
     }
 
