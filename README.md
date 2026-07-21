@@ -224,11 +224,14 @@ to `mirror` and `repair`.)
   Once a checkpoint's individually-valid files are written, the archivist checks
   that they *agree*: each ledger's transaction-set and result hashes match the
   transactions / results files, and the ledger hash chain is continuous within
-  and across checkpoints. Because this runs *after* the writes, a mismatch means
-  files that each passed their own check were already committed but are mutually
-  inconsistent. The run reports failure, and (for `mirror`) the destination is
-  left holding those inconsistent files — re-run `repair --verify` against a
-  known-good source to reconcile them.
+  and across checkpoints. This includes CAP-0083 (protocol 28+) empty-tx-set
+  ledgers: their header must carry an all-zero `txSetHash`, and the
+  transactions / results files must have no entry for them. Because this runs
+  *after* the writes, a mismatch means files that each passed their own check
+  were already committed but are mutually inconsistent. The run reports
+  failure, and (for `mirror`) the destination is left holding those
+  inconsistent files — re-run `repair --verify` against a known-good source
+  to reconcile them.
 
 ### Which mode should I use?
 

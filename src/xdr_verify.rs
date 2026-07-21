@@ -28,7 +28,7 @@ use std::io::Cursor;
 use std::sync::Mutex;
 use stellar_xdr::{
     Frame, GeneralizedTransactionSet, Hash, LedgerHeaderHistoryEntry, Limited, Limits,
-    ParallelTxsComponent, ReadXdr, ScpHistoryEntry, TransactionHistoryEntry,
+    ParallelTxsComponent, ReadXdr, ScpHistoryEntry, StellarValueExt, TransactionHistoryEntry,
     TransactionHistoryEntryExt, TransactionHistoryResultEntry, TransactionPhase, TransactionSetV1,
     VecM, WriteXdr,
 };
@@ -44,6 +44,9 @@ pub(crate) const EMPTY_XDR_ARRAY_HASH: Hash = Hash([
 
 /// All-zero hash. Used as a sentinel for "no result entry expected."
 const ZERO_HASH: Hash = Hash([0; 32]);
+
+/// Protocol version at which CAP-0083 empty-tx-set values become valid.
+const EMPTY_TX_SET_PROTOCOL_VERSION: u32 = 28;
 
 /// SHA-256 of `data` returned as a `stellar_xdr::Hash` (the same newtype
 /// used by ledger headers, tx-set hashes, etc.).
@@ -100,6 +103,24 @@ pub struct LedgerHeaderVerificationData {
     /// `entry.header.tx_set_result_hash` — cross-verified against the hash computed
     /// from the result file for the same ledger sequence.
     pub expected_result_hash: Hash,
+    /// `entry.header.ledger_version` — used for the CAP-0083 protocol gate and
+    /// the cross-ledger `proposed_prev_ledger_version` check.
+    pub ledger_version: u32,
+    /// `Some` iff `scp_value.ext` is `STELLAR_VALUE_EMPTY_TX_SET` (CAP-0083).
+    pub empty_tx_set: Option<EmptyTxSetInfo>,
+}
+
+/// `proposedValue` details from a CAP-0083 `STELLAR_VALUE_EMPTY_TX_SET` header
+/// ext arm: the value the network dropped. The dropped set's own hash is not
+/// archived anywhere, so only the previous-ledger fields are verifiable.
+#[derive(Debug, Clone)]
+pub struct EmptyTxSetInfo {
+    /// `proposedValue.previous_ledger_hash` — must equal the header's own
+    /// `previous_ledger_hash`.
+    pub proposed_prev_ledger_hash: Hash,
+    /// `proposedValue.previous_ledger_version` — must equal the previous
+    /// ledger's `ledger_version`.
+    pub proposed_prev_ledger_version: u32,
 }
 
 #[derive(Default)]
@@ -109,13 +130,19 @@ struct PendingCheckpoint {
     result_hashes: Option<BTreeMap<u32, Hash>>,
 }
 
-/// First/last ledger-header hashes at a checkpoint boundary, used internally
-/// by [`XdrVerificationManager`] to verify hash continuity across
-/// consecutive checkpoints.
+/// First/last ledger-header hashes and versions at a checkpoint boundary,
+/// used internally by [`XdrVerificationManager`] to verify hash continuity
+/// and CAP-0083 proposed-version continuity across consecutive checkpoints.
 #[derive(Debug, Clone)]
 struct CheckpointBoundary {
     first_prev_hash: Hash,
     last_computed_hash: Hash,
+    /// `ledger_version` of the checkpoint's last ledger — the "previous
+    /// ledger version" seen by the next checkpoint's first ledger.
+    last_ledger_version: u32,
+    /// When the checkpoint's first ledger is a CAP-0083 empty-tx-set ledger,
+    /// its `proposedValue.previous_ledger_version` (else `None`).
+    first_empty_proposed_prev_version: Option<u32>,
 }
 
 /// Kind of verification failure detected. The associated `u32` is the
@@ -262,6 +289,8 @@ impl XdrVerificationManager {
 
         self.verify_checkpoint_completeness(checkpoint, &header_data);
 
+        self.verify_empty_tx_set_internal(&header_data);
+
         if let Some(tx_set_hashes) = data.tx_set_hashes {
             self.verify_tx_set_hashes_internal(&header_data, &tx_set_hashes);
         }
@@ -342,17 +371,102 @@ impl XdrVerificationManager {
         }
     }
 
+    /// Verify CAP-0083 empty-tx-set header semantics.
+    ///
+    /// For each ledger whose `scp_value.ext` is `STELLAR_VALUE_EMPTY_TX_SET`:
+    /// - `tx_set_hash` must be all-zeros
+    /// - `ledger_version` must be >= [`EMPTY_TX_SET_PROTOCOL_VERSION`]
+    /// - `proposedValue.previous_ledger_hash` must equal the header's own
+    ///   `previous_ledger_hash`
+    /// - `tx_set_result_hash` must be the empty-result-set hash
+    /// - `proposedValue.previous_ledger_version` must equal the predecessor
+    ///   ledger's `ledger_version` (checked here for adjacent in-checkpoint
+    ///   pairs; the checkpoint-boundary case is checked in
+    ///   [`verify_checkpoint_chain`](Self::verify_checkpoint_chain))
+    ///
+    /// Conversely, a zero `tx_set_hash` on a ledger *without* the ext arm is
+    /// an error for every ledger except genesis (seq 1), which is the only
+    /// legitimately zero-hashed pre-CAP-83 header.
+    fn verify_empty_tx_set_internal(
+        &self,
+        header_data: &BTreeMap<u32, LedgerHeaderVerificationData>,
+    ) {
+        let mut errors = Vec::new();
+        let mut prev: Option<(u32, &LedgerHeaderVerificationData)> = None;
+        for (&seq, data) in header_data {
+            let mut report = |msg: String| {
+                error!("Ledger {seq}: {msg}");
+                errors.push(VerificationError {
+                    kind: VerificationErrorType::Ledger(seq),
+                    message: msg,
+                });
+            };
+
+            if let Some(info) = &data.empty_tx_set {
+                if data.expected_tx_set_hash != ZERO_HASH {
+                    report(format!(
+                        "empty-tx-set ledger has non-zero tx set hash {}",
+                        data.expected_tx_set_hash.to_hex(),
+                    ));
+                }
+                if data.ledger_version < EMPTY_TX_SET_PROTOCOL_VERSION {
+                    report(format!(
+                        "empty-tx-set ext arm on protocol {} (requires protocol >= {})",
+                        data.ledger_version, EMPTY_TX_SET_PROTOCOL_VERSION,
+                    ));
+                }
+                if info.proposed_prev_ledger_hash != data.prev_hash {
+                    report(format!(
+                        "empty-tx-set proposed previous_ledger_hash {} != header previous_ledger_hash {}",
+                        info.proposed_prev_ledger_hash.to_hex(),
+                        data.prev_hash.to_hex(),
+                    ));
+                }
+                if data.expected_result_hash != EMPTY_XDR_ARRAY_HASH {
+                    report(format!(
+                        "empty-tx-set ledger has non-empty result hash {}",
+                        data.expected_result_hash.to_hex(),
+                    ));
+                }
+                if let Some((prev_seq, prev_data)) = prev {
+                    if prev_seq.saturating_add(1) == seq
+                        && info.proposed_prev_ledger_version != prev_data.ledger_version
+                    {
+                        report(format!(
+                            "empty-tx-set proposed previous ledger version {} != previous ledger's version {}",
+                            info.proposed_prev_ledger_version, prev_data.ledger_version,
+                        ));
+                    }
+                }
+            } else if data.expected_tx_set_hash == ZERO_HASH && seq != 1 {
+                report(
+                    "zero tx set hash on a ledger without the empty-tx-set ext arm \
+                     (only genesis may have a zero tx set hash)"
+                        .to_string(),
+                );
+            }
+            prev = Some((seq, data));
+        }
+        if !errors.is_empty() {
+            self.errors.lock().unwrap().extend(errors);
+        }
+    }
+
     /// Cross-verify per-ledger tx-set hashes from the **transactions** file
     /// against the `expected_tx_set_hash` field embedded in the ledger header.
     ///
     /// For each ledger sequence in `header_data`:
+    /// - **Present on empty-tx-set ledger**: a CAP-0083 empty-tx-set ledger
+    ///   (`empty_tx_set.is_some()`) carries zero transactions, so stellar-core
+    ///   writes no transactions entry for it. Any entry present is a
+    ///   mis-published archive — reported regardless of the entry's hash.
     /// - **Mismatch**: actual tx-set hash differs from `expected_tx_set_hash`
     /// - **Missing**: no entry in `tx_set_hashes`, *and* the ledger isn't
-    ///   genuinely empty. A missing entry is acceptable only when both the
-    ///   expected result hash equals [`EMPTY_XDR_ARRAY_HASH`] *and* the
-    ///   expected tx-set hash is one of the recognized "empty tx set"
-    ///   sentinels (see [`is_empty_tx_set_hash`]) — stellar-core omits empty
-    ///   tx-set entries from the transactions file.
+    ///   genuinely empty. A missing entry is acceptable for an empty-tx-set
+    ///   ledger, or when both the expected result hash equals
+    ///   [`EMPTY_XDR_ARRAY_HASH`] *and* the expected tx-set hash is one of the
+    ///   recognized "empty tx set" sentinels (see [`is_empty_tx_set_hash`]) —
+    ///   stellar-core omits empty tx-set entries from the transactions file.
     fn verify_tx_set_hashes_internal(
         &self,
         header_data: &BTreeMap<u32, LedgerHeaderVerificationData>,
@@ -363,7 +477,12 @@ impl XdrVerificationManager {
             let expected = &data.expected_tx_set_hash;
 
             let err_msg = if let Some(actual) = tx_set_hashes.get(&seq) {
-                if actual == expected {
+                if data.empty_tx_set.is_some() {
+                    Some(format!(
+                        "transactions entry present for empty-tx-set ledger (computed hash {})",
+                        actual.to_hex(),
+                    ))
+                } else if actual == expected {
                     None
                 } else {
                     Some(format!(
@@ -372,7 +491,8 @@ impl XdrVerificationManager {
                         actual.to_hex(),
                     ))
                 }
-            } else if data.expected_result_hash != EMPTY_XDR_ARRAY_HASH
+            } else if data.empty_tx_set.is_none()
+                && data.expected_result_hash != EMPTY_XDR_ARRAY_HASH
                 && !is_empty_tx_set_hash(expected, &data.prev_hash)
             {
                 Some(format!(
@@ -400,10 +520,17 @@ impl XdrVerificationManager {
     /// against the `expected_result_hash` field embedded in the ledger header.
     ///
     /// For each ledger sequence in `header_data`:
+    /// - **Present on empty-tx-set ledger**: a CAP-0083 empty-tx-set ledger
+    ///   (`empty_tx_set.is_some()`) has zero transactions, so stellar-core
+    ///   writes no results entry for it. Any entry present is a mis-published
+    ///   archive — reported regardless of the entry's hash (even when it
+    ///   matches the empty-result-set hash).
     /// - **Mismatch**: actual result-set hash differs from `expected_result_hash`
     /// - **Missing**: no entry in `result_hashes` *and* `expected_result_hash`
-    ///   is non-zero and not [`EMPTY_XDR_ARRAY_HASH`] (those two values mark
-    ///   "no result entry expected" and are tolerated as missing).
+    ///   is not [`EMPTY_XDR_ARRAY_HASH`] ("empty result set, no entry
+    ///   published") and not the genesis exception — only ledger 1's
+    ///   synthesized header legitimately carries an all-zero result hash, so
+    ///   a zero result hash on any other ledger is not tolerated.
     fn verify_result_hashes_internal(
         &self,
         header_data: &BTreeMap<u32, LedgerHeaderVerificationData>,
@@ -414,7 +541,12 @@ impl XdrVerificationManager {
             let expected = &data.expected_result_hash;
 
             let err_msg = if let Some(actual) = result_hashes.get(&seq) {
-                if actual == expected {
+                if data.empty_tx_set.is_some() {
+                    Some(format!(
+                        "results entry present for empty-tx-set ledger (computed hash {})",
+                        actual.to_hex(),
+                    ))
+                } else if actual == expected {
                     None
                 } else {
                     Some(format!(
@@ -423,7 +555,7 @@ impl XdrVerificationManager {
                         actual.to_hex(),
                     ))
                 }
-            } else if *expected != EMPTY_XDR_ARRAY_HASH && *expected != ZERO_HASH {
+            } else if *expected != EMPTY_XDR_ARRAY_HASH && !(*expected == ZERO_HASH && seq == 1) {
                 Some(format!(
                     "missing result entry, expected hash {}",
                     expected.to_hex(),
@@ -525,6 +657,11 @@ impl XdrVerificationManager {
             CheckpointBoundary {
                 first_prev_hash: first_data.prev_hash.clone(),
                 last_computed_hash: last_data.computed_hash.clone(),
+                last_ledger_version: last_data.ledger_version,
+                first_empty_proposed_prev_version: first_data
+                    .empty_tx_set
+                    .as_ref()
+                    .map(|info| info.proposed_prev_ledger_version),
             },
         );
     }
@@ -563,6 +700,22 @@ impl XdrVerificationManager {
                     kind: VerificationErrorType::Boundary(curr_checkpoint),
                     message: err_msg,
                 });
+            }
+
+            if let Some(proposed) = curr_boundary.first_empty_proposed_prev_version {
+                if proposed != prev_boundary.last_ledger_version {
+                    let first_ledger = curr_checkpoint.saturating_sub(63);
+                    let err_msg = format!(
+                        "empty-tx-set ledger {first_ledger} proposed previous ledger version {} \
+                         != checkpoint {prev_checkpoint} last ledger version {}",
+                        proposed, prev_boundary.last_ledger_version,
+                    );
+                    error!("{err_msg}");
+                    chain_errors.push(VerificationError {
+                        kind: VerificationErrorType::Boundary(curr_checkpoint),
+                        message: err_msg,
+                    });
+                }
             }
         }
 
@@ -675,6 +828,14 @@ pub(crate) fn parse_ledger_header_entries_for_checkpoint(
 
         debug!("Verified ledger {} hash: {}", seq, computed_hash.to_hex());
 
+        let empty_tx_set = match &entry.header.scp_value.ext {
+            StellarValueExt::EmptyTxSet(pv) => Some(EmptyTxSetInfo {
+                proposed_prev_ledger_hash: pv.previous_ledger_hash.clone(),
+                proposed_prev_ledger_version: pv.previous_ledger_version,
+            }),
+            StellarValueExt::Basic | StellarValueExt::Signed(_) => None,
+        };
+
         data.insert(
             seq,
             LedgerHeaderVerificationData {
@@ -682,6 +843,8 @@ pub(crate) fn parse_ledger_header_entries_for_checkpoint(
                 prev_hash: entry.header.previous_ledger_hash,
                 expected_tx_set_hash: entry.header.scp_value.tx_set_hash,
                 expected_result_hash: entry.header.tx_set_result_hash,
+                ledger_version: entry.header.ledger_version,
+                empty_tx_set,
             },
         );
     }
@@ -746,8 +909,9 @@ pub(crate) fn compute_empty_v1_parallel_tx_set_hash(previous_ledger_hash: &Hash)
 /// markers, given the ledger's `prev_hash`.
 ///
 /// Treated as empty if `expected` matches any of:
-/// - all-zero hash ([`ZERO_HASH`]) — the genesis ledger, whose synthesized
-///   header carries a zero tx-set hash
+/// - all-zero hash ([`ZERO_HASH`]) — the genesis ledger, and CAP-0083
+///   empty-tx-set headers, whose zero tx-set hash is validated separately by
+///   the empty-tx-set ext-arm check
 /// - [`compute_empty_v0_tx_set_hash`]`(prev_hash)` — empty V0 set
 /// - [`compute_empty_v1_sequential_tx_set_hash`]`(prev_hash)` — canonical empty
 ///   V1 set for protocols 20-22 (two sequential phases)

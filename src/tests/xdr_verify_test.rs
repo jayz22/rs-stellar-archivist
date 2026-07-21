@@ -4,20 +4,21 @@ use crate::xdr_verify::{
     compute_empty_v1_sequential_tx_set_hash, compute_v0_tx_set_hash, compute_v1_tx_set_hash,
     expected_ledger_range, is_empty_tx_set_hash, parse_ledger_header_entries_for_checkpoint,
     parse_result_entries_for_checkpoint, parse_scp_entries,
-    parse_transaction_entries_for_checkpoint, LedgerHeaderVerificationData, VerificationErrorType,
-    XdrVerificationManager, EMPTY_XDR_ARRAY_HASH,
+    parse_transaction_entries_for_checkpoint, EmptyTxSetInfo, LedgerHeaderVerificationData,
+    VerificationErrorType, XdrVerificationManager, EMPTY_XDR_ARRAY_HASH,
 };
 use rstest::rstest;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use stellar_xdr::{
     AccountId, ContractId, CreateAccountOp, GeneralizedTransactionSet, Hash, HostFunction,
-    InvokeContractArgs, InvokeHostFunctionOp, LedgerHeader, LedgerHeaderExt,
-    LedgerHeaderHistoryEntry, LedgerHeaderHistoryEntryExt, LedgerScpMessages, Limits, Memo,
-    MuxedAccount, Operation, OperationBody, ParallelTxsComponent, Preconditions, PublicKey,
-    ScAddress, ScSymbol, ScVal, ScpHistoryEntry, ScpHistoryEntryV0, SequenceNumber,
-    SorobanAddressCredentials, SorobanAuthorizationEntry, SorobanAuthorizedFunction,
-    SorobanAuthorizedInvocation, SorobanCredentials, TimePoint, Transaction, TransactionEnvelope,
+    InvokeContractArgs, InvokeHostFunctionOp, LedgerCloseValueSignature, LedgerHeader,
+    LedgerHeaderExt, LedgerHeaderHistoryEntry, LedgerHeaderHistoryEntryExt, LedgerScpMessages,
+    Limits, Memo, MuxedAccount, NodeId, Operation, OperationBody, ParallelTxsComponent,
+    Preconditions, PublicKey, ScAddress, ScSymbol, ScVal, ScpHistoryEntry, ScpHistoryEntryV0,
+    SequenceNumber, Signature, SorobanAddressCredentials, SorobanAuthorizationEntry,
+    SorobanAuthorizedFunction, SorobanAuthorizedInvocation, SorobanCredentials, StellarValueExt,
+    StellarValueProposedValue, TimePoint, Transaction, TransactionEnvelope,
     TransactionHistoryEntry, TransactionHistoryEntryExt, TransactionHistoryResultEntry,
     TransactionHistoryResultEntryExt, TransactionPhase, TransactionResult, TransactionResultExt,
     TransactionResultPair, TransactionResultResult, TransactionResultSet, TransactionSet,
@@ -250,6 +251,35 @@ fn create_valid_ledger_header_entry(
     }
 }
 
+fn cap83_proposed_value(prev_hash: [u8; 32], dropped: [u8; 32]) -> StellarValueProposedValue {
+    StellarValueProposedValue {
+        tx_set_hash: Hash(dropped),
+        previous_ledger_hash: Hash(prev_hash),
+        previous_ledger_version: 28,
+        lc_value_signature: LedgerCloseValueSignature {
+            node_id: NodeId(PublicKey::PublicKeyTypeEd25519(Uint256([7; 32]))),
+            signature: Signature::default(),
+        },
+    }
+}
+
+fn create_cap83_ledger_header_entry(
+    seq: u32,
+    prev_hash: [u8; 32],
+    dropped: [u8; 32],
+) -> LedgerHeaderHistoryEntry {
+    let mut header = create_minimal_ledger_header(seq, prev_hash, [0; 32], EMPTY_XDR_ARRAY_HASH.0);
+    header.ledger_version = 28;
+    header.scp_value.ext = StellarValueExt::EmptyTxSet(cap83_proposed_value(prev_hash, dropped));
+    let header_xdr = header.to_xdr(Limits::none()).unwrap();
+    let computed_hash: [u8; 32] = Sha256::digest(&header_xdr).into();
+    LedgerHeaderHistoryEntry {
+        hash: Hash(computed_hash),
+        header,
+        ext: LedgerHeaderHistoryEntryExt::V0,
+    }
+}
+
 fn create_complete_checkpoint_data(
     checkpoint: u32,
     initial_prev_hash: [u8; 32],
@@ -267,6 +297,8 @@ fn create_complete_checkpoint_data(
                 prev_hash: Hash(prev_hash),
                 expected_tx_set_hash: Hash([0; 32]),
                 expected_result_hash: Hash([0; 32]),
+                ledger_version: 21,
+                empty_tx_set: None,
             },
         );
         prev_hash = computed_hash;
@@ -298,6 +330,8 @@ fn single_ledger_header_data(
             prev_hash: Hash(prev_hash),
             expected_tx_set_hash: Hash([0; 32]),
             expected_result_hash: Hash([0; 32]),
+            ledger_version: 21,
+            empty_tx_set: None,
         },
     )])
 }
@@ -350,6 +384,32 @@ fn test_parse_ledger_header_entries_single_entry() {
     assert_eq!(actual.prev_hash, Hash([1; 32]));
     assert_eq!(actual.expected_tx_set_hash, Hash([2; 32]));
     assert_eq!(actual.expected_result_hash, Hash([3; 32]));
+}
+
+#[test]
+fn test_parse_cap83_header_extracts_empty_tx_set_info() {
+    let prev = hash_of("prev-ledger");
+    let dropped = hash_of("dropped-tx-set");
+    let entry = create_cap83_ledger_header_entry(100, prev, dropped);
+    let parsed = parse_ledger_header_entries(&frame_xdr(&entry)).unwrap();
+    let data = &parsed[&100];
+    assert_eq!(data.ledger_version, 28);
+    let info: &EmptyTxSetInfo = data
+        .empty_tx_set
+        .as_ref()
+        .expect("EmptyTxSet ext must be extracted");
+    assert_eq!(info.proposed_prev_ledger_hash, Hash(prev));
+    assert_eq!(info.proposed_prev_ledger_version, 28);
+    assert_eq!(data.expected_tx_set_hash, Hash([0; 32]));
+    assert_eq!(data.expected_result_hash, EMPTY_XDR_ARRAY_HASH);
+}
+
+#[test]
+fn test_parse_plain_header_has_no_empty_tx_set_info() {
+    let entry = create_valid_ledger_header_entry(100, hash_of("p"), hash_of("t"), hash_of("r"));
+    let parsed = parse_ledger_header_entries(&frame_xdr(&entry)).unwrap();
+    assert_eq!(parsed[&100].ledger_version, 21);
+    assert!(parsed[&100].empty_tx_set.is_none());
 }
 
 #[test]
@@ -622,6 +682,9 @@ fn test_manager_records_and_verifies_checkpoint() {
 
     let mut header_data = create_complete_checkpoint_data(checkpoint, [0; 32]);
     for data in header_data.values_mut() {
+        // Non-zero tx-set hash so the CAP-0083 zero-tx-set-without-ext-arm
+        // check stays quiet; this test only exercises result-hash matching.
+        data.expected_tx_set_hash = Hash(hash_of("txset"));
         data.expected_result_hash = Hash(result_hash);
     }
 
@@ -662,7 +725,7 @@ fn test_chain_break_within_ledger_file(#[case] checkpoint: u32, #[case] corrupte
 #[case::regular(127, 64)]
 fn test_complete_checkpoint_passes(#[case] checkpoint: u32, #[case] expected_count: usize) {
     let manager = XdrVerificationManager::new();
-    let header_data = create_complete_checkpoint_data(checkpoint, [0; 32]);
+    let header_data = with_nonzero_tx_hashes(create_complete_checkpoint_data(checkpoint, [0; 32]));
     assert_eq!(header_data.len(), expected_count);
 
     manager.record_header_data(checkpoint, header_data);
@@ -700,6 +763,8 @@ fn test_ledger_outside_expected_checkpoint_range() {
             prev_hash: Hash([0xbb; 32]),
             expected_tx_set_hash: Hash([0; 32]),
             expected_result_hash: Hash([0; 32]),
+            ledger_version: 21,
+            empty_tx_set: None,
         },
     );
 
@@ -742,7 +807,7 @@ fn test_cross_checkpoint_chain(#[case] break_chain: bool) {
 #[case::broken(true)]
 fn test_consecutive_checkpoints_full(#[case] break_chain: bool) {
     let manager = XdrVerificationManager::new();
-    let header_data_63 = create_complete_checkpoint_data(63, [0; 32]);
+    let header_data_63 = with_nonzero_tx_hashes(create_complete_checkpoint_data(63, [0; 32]));
     let last_hash_of_63 = header_data_63.get(&63).unwrap().computed_hash.clone();
 
     let mut header_data_127 = BTreeMap::new();
@@ -758,8 +823,10 @@ fn test_consecutive_checkpoints_full(#[case] break_chain: bool) {
             LedgerHeaderVerificationData {
                 computed_hash: computed_hash.clone(),
                 prev_hash: prev_hash.clone(),
-                expected_tx_set_hash: Hash([0; 32]),
+                expected_tx_set_hash: Hash(hash_of(&format!("txset{seq}"))),
                 expected_result_hash: Hash([0; 32]),
+                ledger_version: 21,
+                empty_tx_set: None,
             },
         );
         prev_hash = computed_hash;
@@ -782,8 +849,14 @@ fn test_consecutive_checkpoints_full(#[case] break_chain: bool) {
 #[test]
 fn test_non_consecutive_checkpoint_scanning() {
     let manager = XdrVerificationManager::new();
-    manager.record_header_data(63, create_complete_checkpoint_data(63, [0; 32]));
-    manager.record_header_data(191, create_complete_checkpoint_data(191, [0; 32]));
+    manager.record_header_data(
+        63,
+        with_nonzero_tx_hashes(create_complete_checkpoint_data(63, [0; 32])),
+    );
+    manager.record_header_data(
+        191,
+        with_nonzero_tx_hashes(create_complete_checkpoint_data(191, [0; 32])),
+    );
     manager.verify_and_release(63);
     manager.verify_and_release(191);
 
@@ -811,7 +884,7 @@ fn test_cross_checkpoint_missing_last_ledger_breaks_chain() {
 fn test_manager_memory_freed_after_verification() {
     let manager = XdrVerificationManager::new();
     let checkpoint = 63;
-    let header_data = create_complete_checkpoint_data(checkpoint, [0; 32]);
+    let header_data = with_nonzero_tx_hashes(create_complete_checkpoint_data(checkpoint, [0; 32]));
 
     manager.record_header_data(checkpoint, header_data.clone());
     manager.verify_and_release(checkpoint);
@@ -847,11 +920,11 @@ fn test_verify_and_release_with_only_result_hashes_records_error() {
 #[test]
 fn test_verify_checkpoint_chain_with_three_consecutive_checkpoints() {
     let manager = XdrVerificationManager::new();
-    let header_data_63 = create_complete_checkpoint_data(63, [0; 32]);
+    let header_data_63 = with_nonzero_tx_hashes(create_complete_checkpoint_data(63, [0; 32]));
     let hash_63 = header_data_63.get(&63).unwrap().computed_hash.clone();
-    let header_data_127 = create_complete_checkpoint_data(127, hash_63.0);
+    let header_data_127 = with_nonzero_tx_hashes(create_complete_checkpoint_data(127, hash_63.0));
     let hash_127 = header_data_127.get(&127).unwrap().computed_hash.clone();
-    let header_data_191 = create_complete_checkpoint_data(191, hash_127.0);
+    let header_data_191 = with_nonzero_tx_hashes(create_complete_checkpoint_data(191, hash_127.0));
 
     manager.record_header_data(63, header_data_63);
     manager.record_header_data(127, header_data_127);
@@ -874,7 +947,10 @@ fn test_verify_checkpoint_chain_empty_manager() {
 #[test]
 fn test_verify_checkpoint_chain_single_checkpoint_is_noop() {
     let manager = XdrVerificationManager::new();
-    manager.record_header_data(63, create_complete_checkpoint_data(63, [0; 32]));
+    manager.record_header_data(
+        63,
+        with_nonzero_tx_hashes(create_complete_checkpoint_data(63, [0; 32])),
+    );
     manager.verify_and_release(63);
     manager.verify_checkpoint_chain();
 
@@ -954,18 +1030,24 @@ fn test_manager_detects_missing_entry_for_non_empty_hash(#[case] hash_type: &str
 #[rstest]
 #[case::tx_set_empty_v0("tx set", "empty_v0")]
 #[case::tx_set_empty_v1("tx set", "empty_v1")]
-#[case::tx_set_zero("tx set", "zero")]
 #[case::result_empty_xdr_array("result", "empty_xdr_array")]
-#[case::result_zero("result", "zero")]
+#[case::result_zero_genesis("result", "zero")]
 fn test_manager_allows_missing_entry_for_empty_hash(
     #[case] hash_type: &str,
     #[case] empty_variant: &str,
 ) {
     let manager = XdrVerificationManager::new();
-    let checkpoint = 127;
+    // A zero result hash is tolerated only on genesis (ledger 1), so the
+    // "zero" case runs on the genesis checkpoint; the others use an ordinary
+    // checkpoint.
+    let checkpoint = if empty_variant == "zero" { 63 } else { 127 };
 
     let mut header_data = create_complete_checkpoint_data(checkpoint, [0; 32]);
     for data in header_data.values_mut() {
+        // Baseline non-zero tx-set hash so the CAP-0083 check (which flags a
+        // zero tx-set hash without the ext arm) stays quiet; cases exercising
+        // empty tx-set hashes override this.
+        data.expected_tx_set_hash = Hash(hash_of("txset_baseline"));
         match (hash_type, empty_variant) {
             ("tx set", "empty_v0") => {
                 data.expected_tx_set_hash = compute_empty_v0_tx_set_hash(&data.prev_hash);
@@ -975,13 +1057,20 @@ fn test_manager_allows_missing_entry_for_empty_hash(
                 data.expected_tx_set_hash = compute_empty_v1_parallel_tx_set_hash(&data.prev_hash);
                 data.expected_result_hash = Hash(hash_of("some_result"));
             }
-            ("tx set", "zero") => {} // defaults are already Hash([0; 32])
             ("result", "empty_xdr_array") => {
                 data.expected_result_hash = EMPTY_XDR_ARRAY_HASH;
             }
-            ("result", "zero") => {} // defaults are already Hash([0; 32])
+            ("result", "zero") => {
+                data.expected_result_hash = EMPTY_XDR_ARRAY_HASH;
+            }
             _ => unreachable!(),
         }
+    }
+    if empty_variant == "zero" {
+        // Model the real genesis shape: ledger 1 alone carries the zero
+        // result hash (its header is synthesized without an SCP round).
+        header_data.get_mut(&1).unwrap().expected_result_hash = Hash([0; 32]);
+        header_data.get_mut(&1).unwrap().expected_tx_set_hash = Hash([0; 32]);
     }
 
     manager.record_header_data(checkpoint, header_data);
@@ -993,6 +1082,29 @@ fn test_manager_allows_missing_entry_for_empty_hash(
     manager.verify_and_release(checkpoint);
 
     assert_no_errors_matching(&manager, hash_type);
+}
+
+#[test]
+fn test_manager_flags_missing_result_entry_for_non_genesis_zero_result_hash() {
+    // Only genesis (ledger 1) legitimately carries an all-zero result hash;
+    // post-genesis headers always record SHA256 of the (possibly empty)
+    // result set, which can never be zero. A zero result hash mid-chain with
+    // no results entry must therefore be reported, not tolerated.
+    let manager = XdrVerificationManager::new();
+    let checkpoint = 127;
+
+    let mut header_data = create_complete_checkpoint_data(checkpoint, [0; 32]);
+    for data in header_data.values_mut() {
+        // Non-zero tx-set hashes keep the zero-tx-set-hash check quiet;
+        // result hashes stay at the fixture default of all-zeros.
+        data.expected_tx_set_hash = Hash(hash_of("txset_baseline"));
+    }
+
+    manager.record_header_data(checkpoint, header_data);
+    manager.record_result_hashes(checkpoint, BTreeMap::new());
+    manager.verify_and_release(checkpoint);
+
+    assert_has_error(&manager, "missing result entry");
 }
 
 #[test]
@@ -1143,4 +1255,279 @@ fn test_record_all_errors_idempotent() {
 
     assert_eq!(cps_after_first, cps_after_second);
     assert!(cps_after_first.contains(&127));
+}
+
+//=============================================================================
+// CAP-0083 empty-tx-set header-internal + adjacent-ledger verification
+//=============================================================================
+
+fn cap83_header_data(
+    seq: u32,
+    prev_hash: [u8; 32],
+    ledger_version: u32,
+) -> LedgerHeaderVerificationData {
+    LedgerHeaderVerificationData {
+        computed_hash: Hash(hash_of(&format!("ledger{seq}"))),
+        prev_hash: Hash(prev_hash),
+        expected_tx_set_hash: Hash([0; 32]),
+        expected_result_hash: EMPTY_XDR_ARRAY_HASH,
+        ledger_version,
+        empty_tx_set: Some(EmptyTxSetInfo {
+            proposed_prev_ledger_hash: Hash(prev_hash),
+            proposed_prev_ledger_version: ledger_version,
+        }),
+    }
+}
+
+fn with_nonzero_tx_hashes(
+    mut data: BTreeMap<u32, LedgerHeaderVerificationData>,
+) -> BTreeMap<u32, LedgerHeaderVerificationData> {
+    for (seq, d) in &mut data {
+        d.expected_tx_set_hash = Hash(hash_of(&format!("txset{seq}")));
+        d.expected_result_hash = EMPTY_XDR_ARRAY_HASH;
+    }
+    data
+}
+
+/// Build a checkpoint-127 header map whose ledger 100 is a valid CAP-83
+/// empty-tx-set ledger, apply `mutate`, run the manager over it with empty
+/// tx/result maps, and return the manager for error assertions.
+fn run_cap83_checkpoint(
+    mutate: impl FnOnce(&mut BTreeMap<u32, LedgerHeaderVerificationData>),
+) -> XdrVerificationManager {
+    let manager = XdrVerificationManager::new();
+    let mut data = with_nonzero_tx_hashes(create_complete_checkpoint_data(127, [9; 32]));
+    let prev = data[&99].computed_hash.clone();
+    let prev_version = data[&99].ledger_version;
+    let mut entry = cap83_header_data(100, prev.0, 28);
+    entry
+        .empty_tx_set
+        .as_mut()
+        .unwrap()
+        .proposed_prev_ledger_version = prev_version;
+    data.insert(100, entry);
+    mutate(&mut data);
+    manager.record_header_data(127, data);
+    manager.record_tx_set_hashes(127, BTreeMap::new());
+    manager.record_result_hashes(127, BTreeMap::new());
+    manager.verify_and_release(127);
+    manager
+}
+
+#[test]
+fn test_cap83_valid_header_data_passes() {
+    let manager = run_cap83_checkpoint(|_| {});
+    assert!(
+        manager
+            .get_errors()
+            .iter()
+            .all(|e| !e.message.contains("empty-tx-set")),
+        "valid CAP-83 ledger must not produce empty-tx-set errors: {:?}",
+        manager.get_errors()
+    );
+}
+
+#[test]
+fn test_cap83_nonzero_tx_set_hash_rejected() {
+    let manager = run_cap83_checkpoint(|d| {
+        d.get_mut(&100).unwrap().expected_tx_set_hash = Hash([5; 32]);
+    });
+    assert_has_error(&manager, "empty-tx-set ledger has non-zero tx set hash");
+}
+
+#[test]
+fn test_cap83_pre_protocol_28_rejected() {
+    let manager = run_cap83_checkpoint(|d| {
+        d.get_mut(&100).unwrap().ledger_version = 27;
+    });
+    assert_has_error(&manager, "requires protocol >= 28");
+}
+
+#[test]
+fn test_cap83_proposed_prev_hash_mismatch_rejected() {
+    let manager = run_cap83_checkpoint(|d| {
+        d.get_mut(&100)
+            .unwrap()
+            .empty_tx_set
+            .as_mut()
+            .unwrap()
+            .proposed_prev_ledger_hash = Hash([1; 32]);
+    });
+    assert_has_error(&manager, "proposed previous_ledger_hash");
+}
+
+#[test]
+fn test_cap83_nonempty_result_hash_rejected() {
+    let manager = run_cap83_checkpoint(|d| {
+        d.get_mut(&100).unwrap().expected_result_hash = Hash([3; 32]);
+    });
+    assert_has_error(&manager, "empty-tx-set ledger has non-empty result hash");
+}
+
+#[test]
+fn test_cap83_proposed_prev_version_mismatch_rejected() {
+    let manager = run_cap83_checkpoint(|d| {
+        d.get_mut(&100)
+            .unwrap()
+            .empty_tx_set
+            .as_mut()
+            .unwrap()
+            .proposed_prev_ledger_version = 27;
+    });
+    assert_has_error(&manager, "proposed previous ledger version");
+}
+
+#[test]
+fn test_zero_tx_set_hash_without_ext_arm_rejected() {
+    let manager = run_cap83_checkpoint(|d| {
+        d.get_mut(&110).unwrap().expected_tx_set_hash = Hash([0; 32]);
+    });
+    assert_has_error(&manager, "zero tx set hash");
+}
+
+#[test]
+fn test_genesis_zero_tx_set_hash_allowed() {
+    let manager = XdrVerificationManager::new();
+    // Genesis checkpoint covers ledgers 1..=63. Real genesis headers are
+    // synthesized with BOTH hashes all-zeros (no SCP round produced them) —
+    // model that shape for ledger 1 and make all others non-zero.
+    let mut data = with_nonzero_tx_hashes(create_complete_checkpoint_data(63, [0; 32]));
+    data.get_mut(&1).unwrap().expected_tx_set_hash = Hash([0; 32]);
+    data.get_mut(&1).unwrap().expected_result_hash = Hash([0; 32]);
+    manager.record_header_data(63, data);
+    manager.record_tx_set_hashes(63, BTreeMap::new());
+    manager.record_result_hashes(63, BTreeMap::new());
+    manager.verify_and_release(63);
+    assert!(
+        manager
+            .get_errors()
+            .iter()
+            .all(|e| !e.message.contains("zero tx set hash")),
+        "genesis ledger 1 must be allowed a zero tx set hash: {:?}",
+        manager.get_errors()
+    );
+}
+
+/// Like `run_cap83_checkpoint`, but with caller-supplied tx-set/result maps.
+fn run_cap83_checkpoint_with_entries(
+    tx_hashes: BTreeMap<u32, Hash>,
+    result_hashes: BTreeMap<u32, Hash>,
+) -> XdrVerificationManager {
+    let manager = XdrVerificationManager::new();
+    let mut data = with_nonzero_tx_hashes(create_complete_checkpoint_data(127, [9; 32]));
+    let prev = data[&99].computed_hash.clone();
+    let prev_version = data[&99].ledger_version;
+    let mut entry = cap83_header_data(100, prev.0, 28);
+    entry
+        .empty_tx_set
+        .as_mut()
+        .unwrap()
+        .proposed_prev_ledger_version = prev_version;
+    data.insert(100, entry);
+    manager.record_header_data(127, data);
+    manager.record_tx_set_hashes(127, tx_hashes);
+    manager.record_result_hashes(127, result_hashes);
+    manager.verify_and_release(127);
+    manager
+}
+
+#[test]
+fn test_cap83_present_tx_entry_rejected() {
+    let manager = run_cap83_checkpoint_with_entries(
+        BTreeMap::from([(100u32, Hash(hash_of("some-tx-set")))]),
+        BTreeMap::new(),
+    );
+    assert_has_error(
+        &manager,
+        "transactions entry present for empty-tx-set ledger",
+    );
+}
+
+#[test]
+fn test_cap83_present_result_entry_rejected() {
+    // The entry's hash MATCHES the header's expected (empty) result hash —
+    // presence alone must be the error.
+    let manager = run_cap83_checkpoint_with_entries(
+        BTreeMap::new(),
+        BTreeMap::from([(100u32, EMPTY_XDR_ARRAY_HASH)]),
+    );
+    assert_has_error(&manager, "results entry present for empty-tx-set ledger");
+}
+
+#[test]
+fn test_cap83_absent_entries_ok() {
+    let manager = run_cap83_checkpoint_with_entries(BTreeMap::new(), BTreeMap::new());
+    assert!(
+        manager.get_errors().is_empty(),
+        "absent entries for an empty-tx-set ledger must verify clean: {:?}",
+        manager.get_errors()
+    );
+}
+
+#[test]
+fn test_cap83_boundary_proposed_version_mismatch_rejected() {
+    let manager = XdrVerificationManager::new();
+
+    // Checkpoint 127 (ledgers 64..=127), all protocol 21.
+    let cp1 = with_nonzero_tx_hashes(create_complete_checkpoint_data(127, [9; 32]));
+    let last_hash = cp1[&127].computed_hash.clone();
+    manager.record_header_data(127, cp1);
+    manager.record_tx_set_hashes(127, BTreeMap::new());
+    manager.record_result_hashes(127, BTreeMap::new());
+    manager.verify_and_release(127);
+
+    // Checkpoint 191 whose FIRST ledger (128) is an empty-tx-set ledger
+    // claiming proposed previous version 28, while cp 127's last version is 21.
+    let mut cp2 = with_nonzero_tx_hashes(create_complete_checkpoint_data(191, [0; 32]));
+    let mut first = cap83_header_data(128, last_hash.0, 28);
+    first
+        .empty_tx_set
+        .as_mut()
+        .unwrap()
+        .proposed_prev_ledger_version = 28;
+    cp2.insert(128, first);
+    // keep the intra-checkpoint hash chain quiet for ledger 129
+    let first_hash = cp2[&128].computed_hash.clone();
+    cp2.get_mut(&129).unwrap().prev_hash = first_hash;
+    manager.record_header_data(191, cp2);
+    manager.record_tx_set_hashes(191, BTreeMap::new());
+    manager.record_result_hashes(191, BTreeMap::new());
+    manager.verify_and_release(191);
+
+    manager.verify_checkpoint_chain();
+    assert_has_error(&manager, "proposed previous ledger version");
+}
+
+#[test]
+fn test_cap83_boundary_proposed_version_match_ok() {
+    let manager = XdrVerificationManager::new();
+
+    // Checkpoint 127 (ledgers 64..=127), all protocol 21.
+    let cp1 = with_nonzero_tx_hashes(create_complete_checkpoint_data(127, [9; 32]));
+    let last_hash = cp1[&127].computed_hash.clone();
+    manager.record_header_data(127, cp1);
+    manager.record_tx_set_hashes(127, BTreeMap::new());
+    manager.record_result_hashes(127, BTreeMap::new());
+    manager.verify_and_release(127);
+
+    // Checkpoint 191 whose FIRST ledger (128) is an empty-tx-set ledger whose
+    // proposed previous version (21) matches cp 127's last ledger version (21).
+    let mut cp2 = with_nonzero_tx_hashes(create_complete_checkpoint_data(191, [0; 32]));
+    let mut first = cap83_header_data(128, last_hash.0, 28);
+    first
+        .empty_tx_set
+        .as_mut()
+        .unwrap()
+        .proposed_prev_ledger_version = 21;
+    cp2.insert(128, first);
+    // keep the intra-checkpoint hash chain quiet for ledger 129
+    let first_hash = cp2[&128].computed_hash.clone();
+    cp2.get_mut(&129).unwrap().prev_hash = first_hash;
+    manager.record_header_data(191, cp2);
+    manager.record_tx_set_hashes(191, BTreeMap::new());
+    manager.record_result_hashes(191, BTreeMap::new());
+    manager.verify_and_release(191);
+
+    manager.verify_checkpoint_chain();
+    assert_no_errors_matching(&manager, "proposed previous ledger version");
 }

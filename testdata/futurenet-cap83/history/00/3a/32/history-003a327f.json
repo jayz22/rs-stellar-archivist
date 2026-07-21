@@ -1,0 +1,164 @@
+{
+    "version": 2,
+    "server": "stellar-core 27.0.1.itemFetcherV2 (ed0bbceb942703ca80dd257705af428856e13093)",
+    "currentLedger": 3814015,
+    "networkPassphrase": "Test SDF Future Network ; October 2022",
+    "currentBuckets": [
+        {
+            "curr": "f4f99e03626ddd2f39dd70fc7a7321c7e7e378929800c4bcf9186d49990f78ab",
+            "next": {
+                "state": 0
+            },
+            "snap": "c91a06f085cb8f4f3ed3662c978901bb9779809dc89c103c51b222fb21b55829"
+        },
+        {
+            "curr": "cb80d5261c4cfec5bd83b4f45f7ed32bb86c97eb4d66bcb8393ef8b880c48acc",
+            "next": {
+                "state": 0
+            },
+            "snap": "a717571028c9224584e95a4a3b7af4fcceb41300f1e5b249a89541b4ab345072"
+        },
+        {
+            "curr": "a59824a4772f2db43729d7eb939017f6ff65d66a31b1e8620beedbe8a9e1f0d4",
+            "next": {
+                "state": 0
+            },
+            "snap": "f8cf23a5295f413d277c926014a6c019715e682ace6d85b67e076c00426295b9"
+        },
+        {
+            "curr": "4651c84aa0ed33ae2070acc70dc94cc2816bc75c9e52db33ad4fa2c2473d9eb2",
+            "next": {
+                "state": 0
+            },
+            "snap": "5790f504de5acaff2eb32bf8d5a4d7d62258dbf8601972d69f10633f3288c7bd"
+        },
+        {
+            "curr": "2cbdeb1fc61fbe9d2c34946ff89147c82e71af2790d9fa4817ef0dbb967b9c03",
+            "next": {
+                "state": 0
+            },
+            "snap": "6891c640f60135c2667aecade8c9226f8c00c97b3552f90933fe2c79bbdafa43"
+        },
+        {
+            "curr": "d20560e48f54cc6ee105bf66a8489316049cb0629d481e1868624f01479826d3",
+            "next": {
+                "state": 0
+            },
+            "snap": "e1b0ee88dbda82afa937a007355354587b4d1b321e65822cc73c6862363efcde"
+        },
+        {
+            "curr": "a7d0bf1902dceaf7d26e7c14406c6ae6c933fa5e3f0188e7ea72a8523d136497",
+            "next": {
+                "state": 0
+            },
+            "snap": "ac311acf9b7a60b77b44a444a8bfe2699d8f2d687c09a00eca612645e231c578"
+        },
+        {
+            "curr": "2b65a2f5205c207f0e4d312d01fb40e3a0ca49a25045df57a13c69c90e4ece56",
+            "next": {
+                "state": 0
+            },
+            "snap": "abe3fd21be9fddeb1c5e42ed1735ded25eecfa5b5d095fb7632da421dd76b229"
+        },
+        {
+            "curr": "0533b6dd1a92a4544d138f9b6b40a434d7eca7b2672f53a4b48c97b8ea42810e",
+            "next": {
+                "state": 0
+            },
+            "snap": "c45436f70c82b548860d27f24967580ac84e0152cfb990c1c0b6be50366bc4d7"
+        },
+        {
+            "curr": "5c120fb3970df6fb6b41f0f84e6aec21bc53a2ca6013ccb662cc86cc6034885e",
+            "next": {
+                "state": 0
+            },
+            "snap": "6f70643f6f6bcadb53d978f1343e967b0bdd753f7841559a20b525893dff3d75"
+        },
+        {
+            "curr": "141ca7075a827a8ac86586780010ecb6f2242b80e98862632132ebd1517cb808",
+            "next": {
+                "state": 0
+            },
+            "snap": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+    ],
+    "hotArchiveBuckets": [
+        {
+            "curr": "ee26c5cd57a41f91b671ea40529980618db72a16cfaaa508c4ea87b66f3b7bc6",
+            "next": {
+                "state": 0
+            },
+            "snap": "ee26c5cd57a41f91b671ea40529980618db72a16cfaaa508c4ea87b66f3b7bc6"
+        },
+        {
+            "curr": "ee26c5cd57a41f91b671ea40529980618db72a16cfaaa508c4ea87b66f3b7bc6",
+            "next": {
+                "state": 0
+            },
+            "snap": "ee26c5cd57a41f91b671ea40529980618db72a16cfaaa508c4ea87b66f3b7bc6"
+        },
+        {
+            "curr": "ee26c5cd57a41f91b671ea40529980618db72a16cfaaa508c4ea87b66f3b7bc6",
+            "next": {
+                "state": 0
+            },
+            "snap": "ee26c5cd57a41f91b671ea40529980618db72a16cfaaa508c4ea87b66f3b7bc6"
+        },
+        {
+            "curr": "ee26c5cd57a41f91b671ea40529980618db72a16cfaaa508c4ea87b66f3b7bc6",
+            "next": {
+                "state": 0
+            },
+            "snap": "ee26c5cd57a41f91b671ea40529980618db72a16cfaaa508c4ea87b66f3b7bc6"
+        },
+        {
+            "curr": "ee26c5cd57a41f91b671ea40529980618db72a16cfaaa508c4ea87b66f3b7bc6",
+            "next": {
+                "state": 0
+            },
+            "snap": "ee26c5cd57a41f91b671ea40529980618db72a16cfaaa508c4ea87b66f3b7bc6"
+        },
+        {
+            "curr": "ee26c5cd57a41f91b671ea40529980618db72a16cfaaa508c4ea87b66f3b7bc6",
+            "next": {
+                "state": 0
+            },
+            "snap": "ee26c5cd57a41f91b671ea40529980618db72a16cfaaa508c4ea87b66f3b7bc6"
+        },
+        {
+            "curr": "316255be369d0557a896d1b99f5fbab7d4ae198759e9e7b2f607846fcadda957",
+            "next": {
+                "state": 0
+            },
+            "snap": "f10bc674f54ea6f34840a5ef45d9bafa2e828d7157910186cf408e321e22d614"
+        },
+        {
+            "curr": "8666cad6738ed6bb1e4c6a36eddfc08cda8da6bf7089b8423d2d7d1e0b577435",
+            "next": {
+                "state": 0
+            },
+            "snap": "ee26c5cd57a41f91b671ea40529980618db72a16cfaaa508c4ea87b66f3b7bc6"
+        },
+        {
+            "curr": "a4fa916f2df728dba5eb28d8a5659db5695919375c439befe9c7ddd4f9a86ff9",
+            "next": {
+                "state": 0
+            },
+            "snap": "752ad42094e0fb3b91f84a303ee05724a787516b9db2f5c630efef1d325ecfb1"
+        },
+        {
+            "curr": "43eaf67712cfc54a46189479646ba6af4a0f476a735b7860190efec334742392",
+            "next": {
+                "state": 0
+            },
+            "snap": "57d930eb71d7eee7b74525671bb7c94a54e2b984e9b271191463ee869f959930"
+        },
+        {
+            "curr": "4f7be2eb05fae57b032fd26baa0fcf7d3d2d6ca127d95d4c5621d9dfb1b0eaaf",
+            "next": {
+                "state": 0
+            },
+            "snap": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+    ]
+}
