@@ -27,9 +27,10 @@ use std::collections::{BTreeMap, HashMap};
 use std::io::Cursor;
 use std::sync::Mutex;
 use stellar_xdr::{
-    Frame, GeneralizedTransactionSet, Hash, LedgerHeaderHistoryEntry, Limited, Limits, ReadXdr,
-    ScpHistoryEntry, TransactionHistoryEntry, TransactionHistoryEntryExt,
-    TransactionHistoryResultEntry, TransactionSetV1, VecM, WriteXdr,
+    Frame, GeneralizedTransactionSet, Hash, LedgerHeaderHistoryEntry, Limited, Limits,
+    ParallelTxsComponent, ReadXdr, ScpHistoryEntry, TransactionHistoryEntry,
+    TransactionHistoryEntryExt, TransactionHistoryResultEntry, TransactionPhase, TransactionSetV1,
+    VecM, WriteXdr,
 };
 use tokio::io::{AsyncReadExt, BufReader};
 use tokio_util::io::StreamReader;
@@ -694,33 +695,72 @@ pub(crate) fn compute_empty_v0_tx_set_hash(previous_ledger_hash: &Hash) -> Hash 
     sha256(&previous_ledger_hash.0)
 }
 
-/// Hash of an empty V1 `GeneralizedTransactionSet`: SHA-256 of the
-/// XDR-serialized struct with `previous_ledger_hash` set and no phases.
-pub(crate) fn compute_empty_v1_tx_set_hash(previous_ledger_hash: &Hash) -> Hash {
-    let empty_v1 = GeneralizedTransactionSet::V1(TransactionSetV1 {
+/// Hash of an empty V1 `GeneralizedTransactionSet` with the given phase list.
+fn compute_empty_v1_hash_with_phases(
+    previous_ledger_hash: &Hash,
+    phases: Vec<TransactionPhase>,
+) -> Hash {
+    let set = GeneralizedTransactionSet::V1(TransactionSetV1 {
         previous_ledger_hash: previous_ledger_hash.clone(),
-        phases: VecM::default(),
+        phases: phases
+            .try_into()
+            .expect("empty phase list is within XDR bounds"),
     });
-    let xdr = empty_v1
+    let xdr = set
         .to_xdr(Limits::none())
         .expect("serializing empty GeneralizedTransactionSet should not fail");
     sha256(&xdr)
+}
+
+/// Hash of the canonical empty V1 set for protocols 20-22: two sequential
+/// (`V0`) phases — classic and Soroban — each with zero components. Matches
+/// stellar-core's `TxSetXDRFrame::makeEmpty` for those protocols.
+pub(crate) fn compute_empty_v1_sequential_tx_set_hash(previous_ledger_hash: &Hash) -> Hash {
+    compute_empty_v1_hash_with_phases(
+        previous_ledger_hash,
+        vec![
+            TransactionPhase::V0(VecM::default()),
+            TransactionPhase::V0(VecM::default()),
+        ],
+    )
+}
+
+/// Hash of the canonical empty V1 set for protocols 23+: a sequential (`V0`)
+/// classic phase plus a parallel (`V1`) Soroban phase with no execution
+/// stages. Matches stellar-core's `TxSetXDRFrame::makeEmpty` for those
+/// protocols — including the set implied by a CAP-0083 empty-tx-set ledger.
+pub(crate) fn compute_empty_v1_parallel_tx_set_hash(previous_ledger_hash: &Hash) -> Hash {
+    compute_empty_v1_hash_with_phases(
+        previous_ledger_hash,
+        vec![
+            TransactionPhase::V0(VecM::default()),
+            TransactionPhase::V1(ParallelTxsComponent {
+                base_fee: None,
+                execution_stages: VecM::default(),
+            }),
+        ],
+    )
 }
 
 /// Whether `expected` is one of the recognized "no transactions in this ledger"
 /// markers, given the ledger's `prev_hash`.
 ///
 /// Treated as empty if `expected` matches any of:
-/// - all-zero hash ([`ZERO_HASH`])
+/// - all-zero hash ([`ZERO_HASH`]) — the genesis ledger, whose synthesized
+///   header carries a zero tx-set hash
 /// - [`compute_empty_v0_tx_set_hash`]`(prev_hash)` — empty V0 set
-/// - [`compute_empty_v1_tx_set_hash`]`(prev_hash)` — empty V1 set
+/// - [`compute_empty_v1_sequential_tx_set_hash`]`(prev_hash)` — canonical empty
+///   V1 set for protocols 20-22 (two sequential phases)
+/// - [`compute_empty_v1_parallel_tx_set_hash`]`(prev_hash)` — canonical empty V1
+///   set for protocols 23+ (sequential classic + parallel Soroban phase)
 ///
 /// Used by [`verify_tx_set_hashes_internal`](XdrVerificationManager::verify_tx_set_hashes_internal)
 /// to decide whether a missing transactions-file entry is acceptable.
 pub(crate) fn is_empty_tx_set_hash(expected: &Hash, prev_hash: &Hash) -> bool {
     *expected == ZERO_HASH
         || *expected == compute_empty_v0_tx_set_hash(prev_hash)
-        || *expected == compute_empty_v1_tx_set_hash(prev_hash)
+        || *expected == compute_empty_v1_sequential_tx_set_hash(prev_hash)
+        || *expected == compute_empty_v1_parallel_tx_set_hash(prev_hash)
 }
 
 /// Compute the hash of a V0 TransactionSet.

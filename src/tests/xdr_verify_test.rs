@@ -1,10 +1,11 @@
 use super::utils::{parse_ledger_header_entries, parse_result_entries, parse_transaction_entries};
 use crate::xdr_verify::{
-    compute_empty_v0_tx_set_hash, compute_empty_v1_tx_set_hash, compute_v0_tx_set_hash,
-    compute_v1_tx_set_hash, expected_ledger_range, is_empty_tx_set_hash,
-    parse_ledger_header_entries_for_checkpoint, parse_result_entries_for_checkpoint,
-    parse_scp_entries, parse_transaction_entries_for_checkpoint, LedgerHeaderVerificationData,
-    VerificationErrorType, XdrVerificationManager, EMPTY_XDR_ARRAY_HASH,
+    compute_empty_v0_tx_set_hash, compute_empty_v1_parallel_tx_set_hash,
+    compute_empty_v1_sequential_tx_set_hash, compute_v0_tx_set_hash, compute_v1_tx_set_hash,
+    expected_ledger_range, is_empty_tx_set_hash, parse_ledger_header_entries_for_checkpoint,
+    parse_result_entries_for_checkpoint, parse_scp_entries,
+    parse_transaction_entries_for_checkpoint, LedgerHeaderVerificationData, VerificationErrorType,
+    XdrVerificationManager, EMPTY_XDR_ARRAY_HASH,
 };
 use rstest::rstest;
 use sha2::{Digest, Sha256};
@@ -13,14 +14,15 @@ use stellar_xdr::{
     AccountId, ContractId, CreateAccountOp, GeneralizedTransactionSet, Hash, HostFunction,
     InvokeContractArgs, InvokeHostFunctionOp, LedgerHeader, LedgerHeaderExt,
     LedgerHeaderHistoryEntry, LedgerHeaderHistoryEntryExt, LedgerScpMessages, Limits, Memo,
-    MuxedAccount, Operation, OperationBody, Preconditions, PublicKey, ScAddress, ScSymbol, ScVal,
-    ScpHistoryEntry, ScpHistoryEntryV0, SequenceNumber, SorobanAddressCredentials,
-    SorobanAuthorizationEntry, SorobanAuthorizedFunction, SorobanAuthorizedInvocation,
-    SorobanCredentials, TimePoint, Transaction, TransactionEnvelope, TransactionHistoryEntry,
-    TransactionHistoryEntryExt, TransactionHistoryResultEntry, TransactionHistoryResultEntryExt,
-    TransactionPhase, TransactionResult, TransactionResultExt, TransactionResultPair,
-    TransactionResultResult, TransactionResultSet, TransactionSet, TransactionSetV1, TransactionV0,
-    TransactionV0Envelope, TransactionV0Ext, TransactionV1Envelope, Uint256, VecM, WriteXdr,
+    MuxedAccount, Operation, OperationBody, ParallelTxsComponent, Preconditions, PublicKey,
+    ScAddress, ScSymbol, ScVal, ScpHistoryEntry, ScpHistoryEntryV0, SequenceNumber,
+    SorobanAddressCredentials, SorobanAuthorizationEntry, SorobanAuthorizedFunction,
+    SorobanAuthorizedInvocation, SorobanCredentials, TimePoint, Transaction, TransactionEnvelope,
+    TransactionHistoryEntry, TransactionHistoryEntryExt, TransactionHistoryResultEntry,
+    TransactionHistoryResultEntryExt, TransactionPhase, TransactionResult, TransactionResultExt,
+    TransactionResultPair, TransactionResultResult, TransactionResultSet, TransactionSet,
+    TransactionSetV1, TransactionV0, TransactionV0Envelope, TransactionV0Ext,
+    TransactionV1Envelope, Uint256, VecM, WriteXdr,
 };
 
 fn frame_xdr<T: WriteXdr>(entry: &T) -> Vec<u8> {
@@ -531,26 +533,60 @@ fn test_compute_v1_tx_set_hash_matches_manual_hash() {
 }
 
 #[test]
-fn test_is_empty_tx_set_hash_direct_hashes() {
-    let prev_hash = Hash([0x55; 32]);
-    let expected_v0: [u8; 32] = Sha256::digest(prev_hash.0).into();
-    assert_eq!(compute_empty_v0_tx_set_hash(&prev_hash), Hash(expected_v0));
-
-    let empty_v1 = GeneralizedTransactionSet::V1(TransactionSetV1 {
-        previous_ledger_hash: prev_hash.clone(),
-        phases: VecM::default(),
+fn test_empty_v1_tx_set_hash_shapes() {
+    let prev = Hash(hash_of("prev"));
+    let seq_set = GeneralizedTransactionSet::V1(TransactionSetV1 {
+        previous_ledger_hash: prev.clone(),
+        phases: vec![
+            TransactionPhase::V0(VecM::default()),
+            TransactionPhase::V0(VecM::default()),
+        ]
+        .try_into()
+        .unwrap(),
     });
-    let expected_v1: [u8; 32] = Sha256::digest(empty_v1.to_xdr(Limits::none()).unwrap()).into();
-    assert_eq!(compute_empty_v1_tx_set_hash(&prev_hash), Hash(expected_v1));
+    let par_set = GeneralizedTransactionSet::V1(TransactionSetV1 {
+        previous_ledger_hash: prev.clone(),
+        phases: vec![
+            TransactionPhase::V0(VecM::default()),
+            TransactionPhase::V1(ParallelTxsComponent {
+                base_fee: None,
+                execution_stages: VecM::default(),
+            }),
+        ]
+        .try_into()
+        .unwrap(),
+    });
+    assert_eq!(
+        compute_empty_v1_sequential_tx_set_hash(&prev),
+        compute_v1_tx_set_hash(&seq_set).unwrap()
+    );
+    assert_eq!(
+        compute_empty_v1_parallel_tx_set_hash(&prev),
+        compute_v1_tx_set_hash(&par_set).unwrap()
+    );
+    assert_ne!(
+        compute_empty_v1_sequential_tx_set_hash(&prev),
+        compute_empty_v1_parallel_tx_set_hash(&prev)
+    );
+}
 
+#[test]
+fn test_is_empty_tx_set_hash_recognizes_all_shapes() {
+    let prev = Hash(hash_of("prev"));
+    assert!(is_empty_tx_set_hash(&Hash([0; 32]), &prev));
     assert!(is_empty_tx_set_hash(
-        &compute_empty_v0_tx_set_hash(&prev_hash),
-        &prev_hash
+        &compute_empty_v0_tx_set_hash(&prev),
+        &prev
     ));
     assert!(is_empty_tx_set_hash(
-        &compute_empty_v1_tx_set_hash(&prev_hash),
-        &prev_hash
+        &compute_empty_v1_sequential_tx_set_hash(&prev),
+        &prev
     ));
+    assert!(is_empty_tx_set_hash(
+        &compute_empty_v1_parallel_tx_set_hash(&prev),
+        &prev
+    ));
+    assert!(!is_empty_tx_set_hash(&Hash(hash_of("random")), &prev));
 }
 
 #[test]
@@ -936,7 +972,7 @@ fn test_manager_allows_missing_entry_for_empty_hash(
                 data.expected_result_hash = Hash(hash_of("some_result"));
             }
             ("tx set", "empty_v1") => {
-                data.expected_tx_set_hash = compute_empty_v1_tx_set_hash(&data.prev_hash);
+                data.expected_tx_set_hash = compute_empty_v1_parallel_tx_set_hash(&data.prev_hash);
                 data.expected_result_hash = Hash(hash_of("some_result"));
             }
             ("tx set", "zero") => {} // defaults are already Hash([0; 32])
