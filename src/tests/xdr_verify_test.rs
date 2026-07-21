@@ -294,7 +294,7 @@ fn create_complete_checkpoint_data(
             seq,
             LedgerHeaderVerificationData {
                 computed_hash: Hash(computed_hash),
-                prev_hash: Hash(prev_hash),
+                prev_ledger_hash: Hash(prev_hash),
                 expected_tx_set_hash: Hash([0; 32]),
                 expected_result_hash: Hash([0; 32]),
                 ledger_version: 21,
@@ -327,7 +327,7 @@ fn single_ledger_header_data(
         seq,
         LedgerHeaderVerificationData {
             computed_hash: Hash(computed_hash),
-            prev_hash: Hash(prev_hash),
+            prev_ledger_hash: Hash(prev_hash),
             expected_tx_set_hash: Hash([0; 32]),
             expected_result_hash: Hash([0; 32]),
             ledger_version: 21,
@@ -381,7 +381,7 @@ fn test_parse_ledger_header_entries_single_entry() {
 
     assert_eq!(parsed.len(), 1);
     let actual = parsed.get(&100).unwrap();
-    assert_eq!(actual.prev_hash, Hash([1; 32]));
+    assert_eq!(actual.prev_ledger_hash, Hash([1; 32]));
     assert_eq!(actual.expected_tx_set_hash, Hash([2; 32]));
     assert_eq!(actual.expected_result_hash, Hash([3; 32]));
 }
@@ -709,7 +709,10 @@ fn test_chain_break_within_ledger_file(#[case] checkpoint: u32, #[case] corrupte
     let manager = XdrVerificationManager::new();
 
     let mut header_data = create_complete_checkpoint_data(checkpoint, [0; 32]);
-    header_data.get_mut(&corrupted_ledger).unwrap().prev_hash = Hash([0xff; 32]);
+    header_data
+        .get_mut(&corrupted_ledger)
+        .unwrap()
+        .prev_ledger_hash = Hash([0xff; 32]);
 
     manager.record_header_data(checkpoint, header_data);
     manager.verify_and_release(checkpoint);
@@ -760,7 +763,7 @@ fn test_ledger_outside_expected_checkpoint_range() {
         200,
         LedgerHeaderVerificationData {
             computed_hash: Hash([0xaa; 32]),
-            prev_hash: Hash([0xbb; 32]),
+            prev_ledger_hash: Hash([0xbb; 32]),
             expected_tx_set_hash: Hash([0; 32]),
             expected_result_hash: Hash([0; 32]),
             ledger_version: 21,
@@ -822,7 +825,7 @@ fn test_consecutive_checkpoints_full(#[case] break_chain: bool) {
             seq,
             LedgerHeaderVerificationData {
                 computed_hash: computed_hash.clone(),
-                prev_hash: prev_hash.clone(),
+                prev_ledger_hash: prev_hash.clone(),
                 expected_tx_set_hash: Hash(hash_of(&format!("txset{seq}"))),
                 expected_result_hash: Hash([0; 32]),
                 ledger_version: 21,
@@ -1050,11 +1053,12 @@ fn test_manager_allows_missing_entry_for_empty_hash(
         data.expected_tx_set_hash = Hash(hash_of("txset_baseline"));
         match (hash_type, empty_variant) {
             ("tx set", "empty_v0") => {
-                data.expected_tx_set_hash = compute_empty_v0_tx_set_hash(&data.prev_hash);
+                data.expected_tx_set_hash = compute_empty_v0_tx_set_hash(&data.prev_ledger_hash);
                 data.expected_result_hash = Hash(hash_of("some_result"));
             }
             ("tx set", "empty_v1") => {
-                data.expected_tx_set_hash = compute_empty_v1_parallel_tx_set_hash(&data.prev_hash);
+                data.expected_tx_set_hash =
+                    compute_empty_v1_parallel_tx_set_hash(&data.prev_ledger_hash);
                 data.expected_result_hash = Hash(hash_of("some_result"));
             }
             ("result", "empty_xdr_array") => {
@@ -1183,7 +1187,7 @@ fn test_record_all_errors_drains_each_variant() {
 
     // Trigger a `Ledger(seq)` error via an internal chain break.
     let mut chain_break_data = create_complete_checkpoint_data(191, [0; 32]);
-    chain_break_data.get_mut(&150).unwrap().prev_hash = Hash([0xff; 32]);
+    chain_break_data.get_mut(&150).unwrap().prev_ledger_hash = Hash([0xff; 32]);
     manager.record_header_data(191, chain_break_data);
     manager.verify_and_release(191);
 
@@ -1221,7 +1225,7 @@ fn test_record_all_errors_boundary_inserts_both_cps() {
     // Make the internal chain self-consistent but mismatched with cp 127.
     let mut prev_hash = [0xab; 32];
     for (seq, entry) in &mut data_191 {
-        entry.prev_hash = Hash(prev_hash);
+        entry.prev_ledger_hash = Hash(prev_hash);
         prev_hash = entry.computed_hash.0;
         let _ = seq;
     }
@@ -1268,7 +1272,7 @@ fn cap83_header_data(
 ) -> LedgerHeaderVerificationData {
     LedgerHeaderVerificationData {
         computed_hash: Hash(hash_of(&format!("ledger{seq}"))),
-        prev_hash: Hash(prev_hash),
+        prev_ledger_hash: Hash(prev_hash),
         expected_tx_set_hash: Hash([0; 32]),
         expected_result_hash: EMPTY_XDR_ARRAY_HASH,
         ledger_version,
@@ -1488,7 +1492,7 @@ fn test_cap83_boundary_proposed_version_mismatch_rejected() {
     cp2.insert(128, first);
     // keep the intra-checkpoint hash chain quiet for ledger 129
     let first_hash = cp2[&128].computed_hash.clone();
-    cp2.get_mut(&129).unwrap().prev_hash = first_hash;
+    cp2.get_mut(&129).unwrap().prev_ledger_hash = first_hash;
     manager.record_header_data(191, cp2);
     manager.record_tx_set_hashes(191, BTreeMap::new());
     manager.record_result_hashes(191, BTreeMap::new());
@@ -1522,7 +1526,7 @@ fn test_cap83_boundary_proposed_version_match_ok() {
     cp2.insert(128, first);
     // keep the intra-checkpoint hash chain quiet for ledger 129
     let first_hash = cp2[&128].computed_hash.clone();
-    cp2.get_mut(&129).unwrap().prev_hash = first_hash;
+    cp2.get_mut(&129).unwrap().prev_ledger_hash = first_hash;
     manager.record_header_data(191, cp2);
     manager.record_tx_set_hashes(191, BTreeMap::new());
     manager.record_result_hashes(191, BTreeMap::new());

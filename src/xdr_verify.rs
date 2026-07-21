@@ -4,7 +4,7 @@
 //!
 //! Per-file verification:
 //! - Ledger header hash: `entry.hash == SHA256(entry.header.to_xdr())`
-//! - Transaction set hash: V0 = `SHA256(prev_hash || tx1 || ... || txN)`,
+//! - Transaction set hash: V0 = `SHA256(previous_ledger_hash || tx1 || ... || txN)`,
 //!   V1 = `SHA256(GeneralizedTransactionSet.to_xdr())`
 //! - Result set hash: `SHA256(tx_result_set.to_xdr())`
 //! - SCP entry: validates XDR frame structure
@@ -14,7 +14,7 @@
 //! - Transaction set hash matches ledger header's `scp_value.tx_set_hash`
 //! - Result set hash matches ledger header's `tx_set_result_hash`
 //! - Intra-checkpoint hash chain: `ledger[N].previous_ledger_hash == hash(ledger[N-1])`
-//! - Cross-checkpoint hash chain: first ledger's `prev_hash` matches prior checkpoint's last hash
+//! - Cross-checkpoint hash chain: first ledger's `previous_ledger_hash` matches prior checkpoint's last hash
 
 use crate::history_format::{self, CHECKPOINT_FREQUENCY, GENESIS_CHECKPOINT_LEDGER};
 use crate::storage::{from_opendal_error, Error as StorageError, StorageRef};
@@ -96,7 +96,7 @@ pub struct LedgerHeaderVerificationData {
     pub computed_hash: Hash,
     /// `entry.header.previous_ledger_hash` — checked against prior ledger's `computed_hash`
     /// during intra-checkpoint and cross-checkpoint chain verification.
-    pub prev_hash: Hash,
+    pub prev_ledger_hash: Hash,
     /// `entry.header.scp_value.tx_set_hash` — cross-verified against the hash computed
     /// from the transaction file for the same ledger sequence.
     pub expected_tx_set_hash: Hash,
@@ -178,6 +178,14 @@ impl VerificationError {
             VerificationErrorType::Checkpoint(cp) | VerificationErrorType::Boundary(cp) => cp,
         }
     }
+}
+
+fn report_ledger_error(errors: &mut Vec<VerificationError>, seq: u32, message: String) {
+    error!("Ledger {seq}: {message}");
+    errors.push(VerificationError {
+        kind: VerificationErrorType::Ledger(seq),
+        message,
+    });
 }
 
 /// Coordinates cross-file XDR verification across concurrent checkpoint processing.
@@ -394,52 +402,58 @@ impl XdrVerificationManager {
         let mut errors = Vec::new();
         let mut prev: Option<(u32, &LedgerHeaderVerificationData)> = None;
         for (&seq, data) in header_data {
-            let mut report = |msg: String| {
-                error!("Ledger {seq}: {msg}");
-                errors.push(VerificationError {
-                    kind: VerificationErrorType::Ledger(seq),
-                    message: msg,
-                });
-            };
-
             if let Some(info) = &data.empty_tx_set {
                 if data.expected_tx_set_hash != ZERO_HASH {
-                    report(format!(
-                        "empty-tx-set ledger has non-zero tx set hash {}",
-                        data.expected_tx_set_hash.to_hex(),
-                    ));
+                    report_ledger_error(
+                        &mut errors,
+                        seq,
+                        format!(
+                            "empty-tx-set ledger has non-zero tx set hash {}",
+                            data.expected_tx_set_hash.to_hex(),
+                        ),
+                    );
                 }
                 if data.ledger_version < EMPTY_TX_SET_PROTOCOL_VERSION {
-                    report(format!(
-                        "empty-tx-set ext arm on protocol {} (requires protocol >= {})",
-                        data.ledger_version, EMPTY_TX_SET_PROTOCOL_VERSION,
-                    ));
+                    report_ledger_error(
+                        &mut errors,
+                        seq,
+                        format!(
+                            "empty-tx-set ext arm on protocol {} (requires protocol >= {})",
+                            data.ledger_version, EMPTY_TX_SET_PROTOCOL_VERSION,
+                        ),
+                    );
                 }
-                if info.proposed_prev_ledger_hash != data.prev_hash {
-                    report(format!(
+                if info.proposed_prev_ledger_hash != data.prev_ledger_hash {
+                    report_ledger_error(&mut errors, seq, format!(
                         "empty-tx-set proposed previous_ledger_hash {} != header previous_ledger_hash {}",
                         info.proposed_prev_ledger_hash.to_hex(),
-                        data.prev_hash.to_hex(),
+                        data.prev_ledger_hash.to_hex(),
                     ));
                 }
                 if data.expected_result_hash != EMPTY_XDR_ARRAY_HASH {
-                    report(format!(
-                        "empty-tx-set ledger has non-empty result hash {}",
-                        data.expected_result_hash.to_hex(),
-                    ));
+                    report_ledger_error(
+                        &mut errors,
+                        seq,
+                        format!(
+                            "empty-tx-set ledger has non-empty result hash {}",
+                            data.expected_result_hash.to_hex(),
+                        ),
+                    );
                 }
                 if let Some((prev_seq, prev_data)) = prev {
                     if prev_seq.saturating_add(1) == seq
                         && info.proposed_prev_ledger_version != prev_data.ledger_version
                     {
-                        report(format!(
+                        report_ledger_error(&mut errors, seq, format!(
                             "empty-tx-set proposed previous ledger version {} != previous ledger's version {}",
                             info.proposed_prev_ledger_version, prev_data.ledger_version,
                         ));
                     }
                 }
             } else if data.expected_tx_set_hash == ZERO_HASH && seq != 1 {
-                report(
+                report_ledger_error(
+                    &mut errors,
+                    seq,
                     "zero tx set hash on a ledger without the empty-tx-set ext arm \
                      (only genesis may have a zero tx set hash)"
                         .to_string(),
@@ -476,39 +490,42 @@ impl XdrVerificationManager {
         for (&seq, data) in header_data {
             let expected = &data.expected_tx_set_hash;
 
-            let err_msg = if let Some(actual) = tx_set_hashes.get(&seq) {
+            if let Some(actual) = tx_set_hashes.get(&seq) {
                 if data.empty_tx_set.is_some() {
-                    Some(format!(
-                        "transactions entry present for empty-tx-set ledger (computed hash {})",
-                        actual.to_hex(),
-                    ))
-                } else if actual == expected {
-                    None
-                } else {
-                    Some(format!(
-                        "tx set hash mismatch: expected {}, got {}",
-                        expected.to_hex(),
-                        actual.to_hex(),
-                    ))
+                    report_ledger_error(
+                        &mut errors,
+                        seq,
+                        format!(
+                            "transactions entry present for empty-tx-set ledger (computed hash {})",
+                            actual.to_hex(),
+                        ),
+                    );
+                } else if actual != expected {
+                    report_ledger_error(
+                        &mut errors,
+                        seq,
+                        format!(
+                            "tx set hash mismatch: expected {}, got {}",
+                            expected.to_hex(),
+                            actual.to_hex(),
+                        ),
+                    );
                 }
-            } else if data.empty_tx_set.is_none()
-                && data.expected_result_hash != EMPTY_XDR_ARRAY_HASH
-                && !is_empty_tx_set_hash(expected, &data.prev_hash)
-            {
-                Some(format!(
-                    "missing tx set entry, expected hash {}",
-                    expected.to_hex(),
-                ))
-            } else {
-                None
-            };
+                continue;
+            }
 
-            if let Some(err_msg) = err_msg {
-                error!("Ledger {seq}: {err_msg}");
-                errors.push(VerificationError {
-                    kind: VerificationErrorType::Ledger(seq),
-                    message: err_msg,
-                });
+            let is_cap83_empty_tx_set = data.empty_tx_set.is_some();
+            let has_no_result_entry = data.expected_result_hash == EMPTY_XDR_ARRAY_HASH;
+
+            if !(is_cap83_empty_tx_set
+                || has_no_result_entry
+                || is_empty_tx_set_hash(expected, &data.prev_ledger_hash))
+            {
+                report_ledger_error(
+                    &mut errors,
+                    seq,
+                    format!("missing tx set entry, expected hash {}", expected.to_hex(),),
+                );
             }
         }
         if !errors.is_empty() {
@@ -540,36 +557,39 @@ impl XdrVerificationManager {
         for (&seq, data) in header_data {
             let expected = &data.expected_result_hash;
 
-            let err_msg = if let Some(actual) = result_hashes.get(&seq) {
+            if let Some(actual) = result_hashes.get(&seq) {
                 if data.empty_tx_set.is_some() {
-                    Some(format!(
-                        "results entry present for empty-tx-set ledger (computed hash {})",
-                        actual.to_hex(),
-                    ))
-                } else if actual == expected {
-                    None
-                } else {
-                    Some(format!(
-                        "result set hash mismatch: expected {}, got {}",
-                        expected.to_hex(),
-                        actual.to_hex(),
-                    ))
+                    report_ledger_error(
+                        &mut errors,
+                        seq,
+                        format!(
+                            "results entry present for empty-tx-set ledger (computed hash {})",
+                            actual.to_hex(),
+                        ),
+                    );
+                } else if actual != expected {
+                    report_ledger_error(
+                        &mut errors,
+                        seq,
+                        format!(
+                            "result set hash mismatch: expected {}, got {}",
+                            expected.to_hex(),
+                            actual.to_hex(),
+                        ),
+                    );
                 }
-            } else if *expected != EMPTY_XDR_ARRAY_HASH && !(*expected == ZERO_HASH && seq == 1) {
-                Some(format!(
-                    "missing result entry, expected hash {}",
-                    expected.to_hex(),
-                ))
-            } else {
-                None
-            };
+                continue;
+            }
 
-            if let Some(err_msg) = err_msg {
-                error!("Ledger {seq}: {err_msg}");
-                errors.push(VerificationError {
-                    kind: VerificationErrorType::Ledger(seq),
-                    message: err_msg,
-                });
+            let has_empty_result_set_hash = *expected == EMPTY_XDR_ARRAY_HASH;
+            let has_zero_result_hash = *expected == ZERO_HASH && seq == 1;
+
+            if !(has_empty_result_set_hash || has_zero_result_hash) {
+                report_ledger_error(
+                    &mut errors,
+                    seq,
+                    format!("missing result entry, expected hash {}", expected.to_hex(),),
+                );
             }
         }
         if !errors.is_empty() {
@@ -581,7 +601,7 @@ impl XdrVerificationManager {
     ///
     /// For each adjacent ledger pair `(prev, curr)` in `header_data`:
     /// - **Consecutive**: `curr.seq == prev.seq + 1` (else "missing predecessor")
-    /// - **Linked**: `curr.prev_hash == prev.computed_hash` (else "hash chain break")
+    /// - **Linked**: `curr.prev_ledger_hash == prev.computed_hash` (else "hash chain break")
     ///
     /// The link across checkpoint boundaries (this checkpoint's first ledger ↔
     /// prior checkpoint's last) is handled separately by
@@ -601,10 +621,10 @@ impl XdrVerificationManager {
                 if prev_seq.saturating_add(1) != seq {
                     let msg = format!("missing predecessor ledger {}", seq.saturating_sub(1),);
                     kind_and_msg = Some((VerificationErrorType::Ledger(seq), msg));
-                } else if prev_data.computed_hash != data.prev_hash {
+                } else if prev_data.computed_hash != data.prev_ledger_hash {
                     let msg = format!(
                         "hash chain break: previous_ledger_hash {} != computed hash of ledger {} ({})",
-                        data.prev_hash.to_hex(),
+                        data.prev_ledger_hash.to_hex(),
                         prev_seq,
                         prev_data.computed_hash.to_hex(),
                     );
@@ -655,7 +675,7 @@ impl XdrVerificationManager {
         self.boundaries.lock().unwrap().insert(
             checkpoint,
             CheckpointBoundary {
-                first_prev_hash: first_data.prev_hash.clone(),
+                first_prev_hash: first_data.prev_ledger_hash.clone(),
                 last_computed_hash: last_data.computed_hash.clone(),
                 last_ledger_version: last_data.ledger_version,
                 first_empty_proposed_prev_version: first_data
@@ -691,7 +711,7 @@ impl XdrVerificationManager {
                 let first_ledger = curr_checkpoint.saturating_sub(63);
                 let err_msg = format!(
                     "hash chain break between checkpoints {prev_checkpoint} and {curr_checkpoint}: \
-                     ledger {first_ledger} prev_hash {} != checkpoint {prev_checkpoint} last hash {}",
+                     ledger {first_ledger} prev_ledger_hash {} != checkpoint {prev_checkpoint} last hash {}",
                     curr_boundary.first_prev_hash.to_hex(),
                     prev_boundary.last_computed_hash.to_hex(),
                 );
@@ -767,7 +787,7 @@ impl Default for XdrVerificationManager {
 /// Parse decompressed ledger XDR data into per-ledger verification data.
 ///
 /// For each frame, verifies `SHA256(header.to_xdr()) == entry.hash` and extracts
-/// the `prev_hash`, `tx_set_hash`, and `result_hash` fields for cross-file checks.
+/// the `prev_ledger_hash`, `tx_set_hash`, and `result_hash` fields for cross-file checks.
 /// When `checkpoint` is `Some`, also rejects ledger sequences outside the
 /// expected range.
 ///
@@ -840,7 +860,7 @@ pub(crate) fn parse_ledger_header_entries_for_checkpoint(
             seq,
             LedgerHeaderVerificationData {
                 computed_hash,
-                prev_hash: entry.header.previous_ledger_hash,
+                prev_ledger_hash: entry.header.previous_ledger_hash,
                 expected_tx_set_hash: entry.header.scp_value.tx_set_hash,
                 expected_result_hash: entry.header.tx_set_result_hash,
                 ledger_version: entry.header.ledger_version,
@@ -906,25 +926,25 @@ pub(crate) fn compute_empty_v1_parallel_tx_set_hash(previous_ledger_hash: &Hash)
 }
 
 /// Whether `expected` is one of the recognized "no transactions in this ledger"
-/// markers, given the ledger's `prev_hash`.
+/// markers, given the ledger's `prev_ledger_hash`.
 ///
 /// Treated as empty if `expected` matches any of:
 /// - all-zero hash ([`ZERO_HASH`]) — the genesis ledger, and CAP-0083
 ///   empty-tx-set headers, whose zero tx-set hash is validated separately by
 ///   the empty-tx-set ext-arm check
-/// - [`compute_empty_v0_tx_set_hash`]`(prev_hash)` — empty V0 set
-/// - [`compute_empty_v1_sequential_tx_set_hash`]`(prev_hash)` — canonical empty
+/// - [`compute_empty_v0_tx_set_hash`]`(prev_ledger_hash)` — empty V0 set
+/// - [`compute_empty_v1_sequential_tx_set_hash`]`(prev_ledger_hash)` — canonical empty
 ///   V1 set for protocols 20-22 (two sequential phases)
-/// - [`compute_empty_v1_parallel_tx_set_hash`]`(prev_hash)` — canonical empty V1
+/// - [`compute_empty_v1_parallel_tx_set_hash`]`(prev_ledger_hash)` — canonical empty V1
 ///   set for protocols 23+ (sequential classic + parallel Soroban phase)
 ///
 /// Used by [`verify_tx_set_hashes_internal`](XdrVerificationManager::verify_tx_set_hashes_internal)
 /// to decide whether a missing transactions-file entry is acceptable.
-pub(crate) fn is_empty_tx_set_hash(expected: &Hash, prev_hash: &Hash) -> bool {
+pub(crate) fn is_empty_tx_set_hash(expected: &Hash, prev_ledger_hash: &Hash) -> bool {
     *expected == ZERO_HASH
-        || *expected == compute_empty_v0_tx_set_hash(prev_hash)
-        || *expected == compute_empty_v1_sequential_tx_set_hash(prev_hash)
-        || *expected == compute_empty_v1_parallel_tx_set_hash(prev_hash)
+        || *expected == compute_empty_v0_tx_set_hash(prev_ledger_hash)
+        || *expected == compute_empty_v1_sequential_tx_set_hash(prev_ledger_hash)
+        || *expected == compute_empty_v1_parallel_tx_set_hash(prev_ledger_hash)
 }
 
 /// Compute the hash of a V0 TransactionSet.
@@ -1067,7 +1087,7 @@ pub async fn parse_results_stream(
 }
 
 /// Parse decompressed transaction XDR data, computing content hashes per ledger.
-/// V0 entries: `SHA256(prev_hash || tx1_xdr || ... || txN_xdr)`.
+/// V0 entries: `SHA256(previous_ledger_hash || tx1_xdr || ... || txN_xdr)`.
 /// V1 entries: `SHA256(GeneralizedTransactionSet.to_xdr())`.
 /// These hashes are cross-verified against `expected_tx_set_hash` from the ledger headers.
 /// When `checkpoint` is `Some`, rejects ledger sequences outside the expected range.
