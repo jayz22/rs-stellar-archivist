@@ -1,18 +1,3 @@
-```
-                      ███████╗████████╗███████╗██╗     ██╗      █████╗ ██████╗
-                      ██╔════╝╚══██╔══╝██╔════╝██║     ██║     ██╔══██╗██╔══██╗
-                      ███████╗   ██║   █████╗  ██║     ██║     ███████║██████╔╝
-                      ╚════██║   ██║   ██╔══╝  ██║     ██║     ██╔══██║██╔══██╗
-                      ███████║   ██║   ███████╗███████╗███████╗██║  ██║██║  ██║
-                      ╚══════╝   ╚═╝   ╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝
-                    █████╗ ██████╗  ██████╗██╗  ██╗██╗██╗   ██╗██╗███████╗████████╗
-                   ██╔══██╗██╔══██╗██╔════╝██║  ██║██║██║   ██║██║██╔════╝╚══██╔══╝
-                   ███████║██████╔╝██║     ███████║██║██║   ██║██║███████╗   ██║
-                   ██╔══██║██╔══██╗██║     ██╔══██║██║╚██╗ ██╔╝██║╚════██║   ██║
-                   ██║  ██║██║  ██║╚██████╗██║  ██║██║ ╚████╔╝ ██║███████║   ██║
-                   ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝  ╚═╝╚══════╝   ╚═╝
-```
-
 # Stellar Archivist
 
 A Rust implementation of tools for working with Stellar History Archives.
@@ -218,20 +203,14 @@ to `mirror` and `repair`.)
 - **Per-file — checked before the file is committed.** Each file is validated
   against *itself* as it streams from the source: every XDR frame must parse,
   each ledger header must match its own embedded hash, and each bucket's
-  contents must match the SHA-256 in its filename. A file that is corrupt on its
-  own is rejected and never committed to the destination.
+  contents must match the SHA-256 in its filename.
 - **Cross-file and cross-checkpoint — checked after the files are committed.**
   Once a checkpoint's individually-valid files are written, the archivist checks
   that they *agree*: each ledger's transaction-set and result hashes match the
   transactions / results files, and the ledger hash chain is continuous within
   and across checkpoints. This includes CAP-0083 (protocol 28+) empty-tx-set
   ledgers: their header must carry an all-zero `txSetHash`, and the
-  transactions / results files must have no entry for them. Because this runs
-  *after* the writes, a mismatch means files that each passed their own check
-  were already committed but are mutually inconsistent. The run reports
-  failure, and (for `mirror`) the destination is left holding those
-  inconsistent files — re-run `repair --verify` against a known-good source
-  to reconcile them.
+  transactions / results files must have no entry for them.
 
 ### Which mode should I use?
 

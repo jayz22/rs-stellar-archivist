@@ -384,6 +384,8 @@ impl XdrVerificationManager {
     /// For each ledger whose `scp_value.ext` is `STELLAR_VALUE_EMPTY_TX_SET`:
     /// - `tx_set_hash` must be all-zeros
     /// - `ledger_version` must be >= [`EMPTY_TX_SET_PROTOCOL_VERSION`]
+    /// - `proposedValue.previous_ledger_version` must be >=
+    ///   [`EMPTY_TX_SET_PROTOCOL_VERSION`]
     /// - `proposedValue.previous_ledger_hash` must equal the header's own
     ///   `previous_ledger_hash`
     /// - `tx_set_result_hash` must be the empty-result-set hash
@@ -420,6 +422,17 @@ impl XdrVerificationManager {
                         format!(
                             "empty-tx-set ext arm on protocol {} (requires protocol >= {})",
                             data.ledger_version, EMPTY_TX_SET_PROTOCOL_VERSION,
+                        ),
+                    );
+                }
+                if info.proposed_prev_ledger_version < EMPTY_TX_SET_PROTOCOL_VERSION {
+                    report_ledger_error(
+                        &mut errors,
+                        seq,
+                        format!(
+                            "empty-tx-set ext arm proposed on predecessor protocol {} \
+                             (requires predecessor protocol >= {})",
+                            info.proposed_prev_ledger_version, EMPTY_TX_SET_PROTOCOL_VERSION,
                         ),
                     );
                 }
@@ -471,16 +484,13 @@ impl XdrVerificationManager {
     ///
     /// For each ledger sequence in `header_data`:
     /// - **Present on empty-tx-set ledger**: a CAP-0083 empty-tx-set ledger
-    ///   (`empty_tx_set.is_some()`) carries zero transactions, so stellar-core
-    ///   writes no transactions entry for it. Any entry present is a
-    ///   mis-published archive — reported regardless of the entry's hash.
+    ///   (`empty_tx_set.is_some()`) carries zero transactions
     /// - **Mismatch**: actual tx-set hash differs from `expected_tx_set_hash`
-    /// - **Missing**: no entry in `tx_set_hashes`, *and* the ledger isn't
-    ///   genuinely empty. A missing entry is acceptable for an empty-tx-set
-    ///   ledger, or when both the expected result hash equals
-    ///   [`EMPTY_XDR_ARRAY_HASH`] *and* the expected tx-set hash is one of the
-    ///   recognized "empty tx set" sentinels (see [`is_empty_tx_set_hash`]) —
-    ///   stellar-core omits empty tx-set entries from the transactions file.
+    /// - **Missing**: no entry in `tx_set_hashes`, *and* the header's tx-set
+    ///   hash doesn't claim an empty set: neither an empty-tx-set ledger nor
+    ///   a recognized "empty tx set" sentinel (see [`is_empty_tx_set_hash`],
+    ///   whose all-zero member covers genesis). Result-side consistency of a
+    ///   missing entry is enforced by `verify_result_hashes_internal`.
     fn verify_tx_set_hashes_internal(
         &self,
         header_data: &BTreeMap<u32, LedgerHeaderVerificationData>,
@@ -515,12 +525,9 @@ impl XdrVerificationManager {
             }
 
             let is_cap83_empty_tx_set = data.empty_tx_set.is_some();
-            let has_no_result_entry = data.expected_result_hash == EMPTY_XDR_ARRAY_HASH;
+            let is_empty_tx_set = is_empty_tx_set_hash(expected, &data.prev_ledger_hash);
 
-            if !(is_cap83_empty_tx_set
-                || has_no_result_entry
-                || is_empty_tx_set_hash(expected, &data.prev_ledger_hash))
-            {
+            if !(is_cap83_empty_tx_set || is_empty_tx_set) {
                 report_ledger_error(
                     &mut errors,
                     seq,
