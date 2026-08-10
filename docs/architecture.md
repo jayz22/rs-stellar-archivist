@@ -140,6 +140,17 @@ There are two tiers:
 - **Cross-file and chain checks after per-file success**: once the files for a
   checkpoint are individually valid, the verifier checks that they agree with
   each other and that ledger hash links are continuous across checkpoints.
+  - **CAP-0083 empty-tx-set ledgers** (protocol 28+): a header whose
+    `scpValue.ext` is `STELLAR_VALUE_EMPTY_TX_SET` must carry an all-zero
+    `txSetHash`, an empty result-set hash, and `proposedValue` fields
+    matching the previous ledger's hash and version (checked across
+    checkpoint boundaries too), with a proposed previous version >= 28.
+    The transactions and results files must contain **no** entry for such
+    ledgers. Conversely, a zero `txSetHash` without the ext arm is an error
+    except on genesis.
+  - **Missing transactions/results entries** are tolerated only for ledgers
+    that are genuinely empty — an empty result-set hash **and** a canonical
+    empty tx-set hash — or for CAP-0083 empty-tx-set ledgers and genesis.
 
 This split is important. A file that is corrupt in itself should never be
 written. A cross-file failure means the pieces looked valid alone but did not

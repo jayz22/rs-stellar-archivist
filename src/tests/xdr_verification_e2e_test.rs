@@ -15,7 +15,10 @@ use flate2::Compression;
 use rstest::rstest;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use stellar_xdr::Hash;
+use stellar_xdr::{
+    GeneralizedTransactionSet, Hash, Limits, TransactionHistoryEntry, TransactionHistoryEntryExt,
+    TransactionSet, TransactionSetV1, VecM, WriteXdr,
+};
 use tempfile::TempDir;
 
 fn pubnet_old_txset_archive_path() -> PathBuf {
@@ -28,6 +31,12 @@ fn testnet_small_archive_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("testdata")
         .join("testnet-archive-small")
+}
+
+fn futurenet_cap83_archive_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("testdata")
+        .join("futurenet-cap83")
 }
 
 fn copy_archive(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
@@ -176,6 +185,7 @@ fn corrupt_json_file(path: &Path) {
 enum ArchiveType {
     PubnetOldTxset,
     TestnetSmall,
+    FuturenetCap83,
 }
 
 impl ArchiveType {
@@ -183,6 +193,7 @@ impl ArchiveType {
         match self {
             ArchiveType::PubnetOldTxset => pubnet_old_txset_archive_path(),
             ArchiveType::TestnetSmall => testnet_small_archive_path(),
+            ArchiveType::FuturenetCap83 => futurenet_cap83_archive_path(),
         }
     }
 
@@ -190,6 +201,7 @@ impl ArchiveType {
         match self {
             ArchiveType::PubnetOldTxset => "pubnet-old-txset",
             ArchiveType::TestnetSmall => "testnet-small",
+            ArchiveType::FuturenetCap83 => "futurenet-cap83",
         }
     }
 
@@ -197,6 +209,7 @@ impl ArchiveType {
         match self {
             ArchiveType::PubnetOldTxset => (Some(11999999), Some(12001023)),
             ArchiveType::TestnetSmall => (Some(63), Some(255)),
+            ArchiveType::FuturenetCap83 => (Some(3813951), Some(3814079)),
         }
     }
 }
@@ -382,6 +395,7 @@ fn configure_mirror(
 #[rstest]
 #[case::pubnet_old_txset(ArchiveType::PubnetOldTxset)]
 #[case::testnet_small(ArchiveType::TestnetSmall)]
+#[case::futurenet_cap83(ArchiveType::FuturenetCap83)]
 #[tokio::test]
 async fn test_scan_verify_valid_archive(#[case] archive_type: ArchiveType) {
     let archive_url = format!("file://{}", archive_type.source_path().display());
@@ -400,6 +414,7 @@ async fn test_scan_verify_valid_archive(#[case] archive_type: ArchiveType) {
 #[rstest]
 #[case::pubnet_old_txset(ArchiveType::PubnetOldTxset)]
 #[case::testnet_small(ArchiveType::TestnetSmall)]
+#[case::futurenet_cap83(ArchiveType::FuturenetCap83)]
 #[tokio::test]
 async fn test_mirror_verify_valid_archive(#[case] archive_type: ArchiveType) {
     let archive_url = format!("file://{}", archive_type.source_path().display());
@@ -1052,5 +1067,69 @@ async fn test_mirror_verify_no_corrupt_file_written(#[case] atomic: bool) {
         !temp_dest.path().join(relative).exists(),
         "corrupt xdr file should not exist at destination (atomic={})",
         atomic,
+    );
+}
+
+//=============================================================================
+// CAP-0083 Empty Transaction Set Ledger Tests
+//
+// CAP-0083 (protocol 28+) empty-tx-set ledgers are ones where the validators
+// voted to drop the transaction set — distinct from an ordinary ledger that
+// simply had no transactions, which records the canonical empty-set hash.
+// Their header carries scpValue.txSetHash = 0x0 under the
+// STELLAR_VALUE_EMPTY_TX_SET ext arm, and txSetResultHash is the empty-
+// result-set hash (not zero). The transactions and results files contain no
+// entry for such ledgers, so injecting a transactions entry for one must
+// make `scan --verify` fail.
+//=============================================================================
+fn inject_tx_entry_for_cap83_ledger(archive_path: &Path) {
+    let tx_file = archive_path.join("transactions/00/3a/32/transactions-003a323f.xdr.gz");
+    let data = std::fs::read(&tx_file).expect("Failed to read file");
+    let mut decompressed = {
+        use flate2::read::GzDecoder;
+        use std::io::Read;
+        let mut decoder = GzDecoder::new(&data[..]);
+        let mut buf = Vec::new();
+        decoder.read_to_end(&mut buf).expect("Failed to decompress");
+        buf
+    };
+
+    // Ledger 3813903 is the first empty-tx-set ledger in this checkpoint.
+    let entry = TransactionHistoryEntry {
+        ledger_seq: 3_813_903,
+        tx_set: TransactionSet {
+            previous_ledger_hash: Hash([0; 32]),
+            txs: VecM::default(),
+        },
+        ext: TransactionHistoryEntryExt::V1(GeneralizedTransactionSet::V1(TransactionSetV1 {
+            previous_ledger_hash: Hash([0; 32]),
+            phases: VecM::default(),
+        })),
+    };
+    let xdr = entry.to_xdr(Limits::none()).expect("serialize entry");
+    decompressed.extend_from_slice(&(0x8000_0000u32 | xdr.len() as u32).to_be_bytes());
+    decompressed.extend_from_slice(&xdr);
+
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(&decompressed).expect("Failed to write");
+    let compressed = encoder.finish().expect("Failed to finish compression");
+    std::fs::write(&tx_file, compressed).expect("Failed to write file");
+}
+
+#[tokio::test]
+async fn test_scan_verify_detects_tx_entry_for_empty_tx_set_ledger() {
+    let (_temp_dir, archive_path) = setup_archive(ArchiveType::FuturenetCap83);
+    inject_tx_entry_for_cap83_ledger(&archive_path);
+    let archive_url = format!("file://{}", archive_path.display());
+    let result = run_scan(configure_scan(
+        &archive_url,
+        ArchiveType::FuturenetCap83,
+        true,
+        true,
+    ))
+    .await;
+    assert!(
+        result.is_err(),
+        "scan --verify must fail when an empty-tx-set ledger has a transactions entry"
     );
 }
