@@ -9,7 +9,8 @@
 
 #![allow(dead_code)] // Test utilities may not all be used in every test run
 
-use crate::storage::Error as StorageError;
+use crate::history_format::{CHECKPOINT_FREQUENCY, FIRST_SCP_CHECKPOINT};
+use crate::storage::{Error as StorageError, OpendalStore, StorageRef};
 use crate::utils::{NON_STANDARD_RETRYABLE_HTTP_ERRORS, STANDARD_RETRYABLE_HTTP_ERRORS};
 use crate::xdr_verify::{
     parse_ledger_header_entries_for_checkpoint, parse_result_entries_for_checkpoint,
@@ -17,9 +18,9 @@ use crate::xdr_verify::{
 };
 use axum::{routing::get_service, Router};
 use normalize_path::NormalizePath;
+use opendal::{services::Fs, Operator};
 use path_slash::PathExt;
-use std::collections::BTreeMap;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -29,6 +30,28 @@ use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 use url::Url;
 use walkdir::WalkDir;
+
+//=============================================================================
+// Mock Storage Backends
+//=============================================================================
+
+/// Build a mock cloud object store: writable, atomic commit-on-close, and no
+/// filesystem base path exposed — the exact surface S3/GCS present to the
+/// rest of the code. Backed by a bare local fs operator with
+/// `atomic_write_dir` (no layer stack — mocks don't need timeouts or
+/// concurrency limits), so the backing directory doubles as an inspection
+/// window: tests can read, delete, or corrupt the "bucket" contents as plain
+/// files behind the store's back.
+pub(crate) fn mock_object_store(root: &Path) -> StorageRef {
+    let root_str = root.normalize().to_string_lossy().to_string();
+    let builder = Fs::default().root(&root_str).atomic_write_dir(&root_str);
+    let operator = Operator::new(builder)
+        .expect("build mock object store operator")
+        .finish();
+    Arc::new(OpendalStore::from_operator(
+        operator, "", None, /*writable=*/ true, /*atomic_writes=*/ true,
+    ))
+}
 
 //=============================================================================
 // Test Archive Helpers
@@ -51,7 +74,6 @@ pub fn testnet_small_archive_path() -> PathBuf {
 // The fixture straddles the SCP boundary (`FIRST_SCP_CHECKPOINT`, the first
 // pubnet checkpoint that archives an scp): four checkpoints below it (in the
 // gap, no scp) and four at/above it (scp present).
-use crate::history_format::{CHECKPOINT_FREQUENCY, FIRST_SCP_CHECKPOINT};
 
 /// Lowest checkpoint in the fixture — four checkpoints below the boundary.
 pub const PUBNET_SCP_BOUNDARY_LOW: u32 = FIRST_SCP_CHECKPOINT - 4 * CHECKPOINT_FREQUENCY;

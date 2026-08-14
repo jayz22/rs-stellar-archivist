@@ -75,7 +75,7 @@ stellar-archivist scan https://history.stellar.org/prd/core-testnet/core_testnet
 
 ### Mirror an archive
 
-Copy files from a source archive to a local filesystem:
+Copy files from a source archive to a local filesystem or a cloud object store:
 
 ```bash
 # Mirror an entire archive
@@ -89,11 +89,14 @@ stellar-archivist mirror https://history.stellar.org/prd/core-testnet/core_testn
 
 # Skip optional files (scp)
 stellar-archivist mirror https://history.stellar.org/prd/core-testnet/core_testnet_001 file:///local/mirror --skip-optional
+
+# Mirror to a cloud object store (s3://, gcs://, azblob://, b2://, swift://; credentials via standard env vars)
+stellar-archivist mirror https://history.stellar.org/prd/core-testnet/core_testnet_001 s3://my-bucket/testnet-mirror
 ```
 
 ### Repair an archive
 
-Fixes a **local** archive in place by re-fetching broken or
+Fixes a **local or cloud-hosted** archive in place by re-fetching broken or
 missing files from a **known-good source** archive.
 
 ```bash
@@ -105,6 +108,9 @@ stellar-archivist repair https://history.stellar.org/... file:///local/archive -
 
 # Repair only a range
 stellar-archivist repair https://history.stellar.org/... file:///local/archive --low 1000 --high 5000
+
+# Repair an archive hosted in a cloud object store
+stellar-archivist repair https://history.stellar.org/... s3://my-bucket/testnet-mirror --verify
 ```
 
 **Dry-run and plans.** A dry-run writes a JSON **plan** of everything it

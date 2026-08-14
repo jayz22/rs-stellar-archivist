@@ -103,7 +103,7 @@ pub trait Storage: Send + Sync {
     async fn exists(&self, object: &str) -> Result<bool, Error>;
 
     /// Open an `OpenDAL` writer for the object with buffering enabled.
-    /// Only supported by writable backends (e.g., filesystem).
+    /// Only supported by writable backends (filesystem and cloud object stores).
     /// Caller is responsible for calling `writer.close()` after writing.
     async fn open_writer(&self, _object: &str) -> Result<Writer, Error> {
         Err(Error::fatal("Write not supported by this backend"))
@@ -111,7 +111,7 @@ pub trait Storage: Send + Sync {
 
     /// Write an entire buffer to an object.
     /// This is a convenience method that opens a writer, writes, and closes.
-    /// Only supported by writable backends (e.g., filesystem).
+    /// Only supported by writable backends (filesystem and cloud object stores).
     async fn write(&self, object: &str, data: Buffer) -> Result<(), Error> {
         let mut writer = self.open_writer(object).await?;
         writer
@@ -127,7 +127,7 @@ pub trait Storage: Send + Sync {
 
     /// Copy data from a source reader to a destination object.
     /// Streams data in chunks without buffering the entire file in memory.
-    /// Only supported by writable backends (e.g., filesystem).
+    /// Only supported by writable backends (filesystem and cloud object stores).
     async fn copy_from_reader(&self, object: &str, reader: Reader) -> Result<(), Error> {
         let copy_phase = crate::phase!(crate::metrics::Phase::Copy);
         let writer = self.open_writer(object).await?;
@@ -213,25 +213,27 @@ pub struct OpendalStore {
     root_path: Option<PathBuf>,
     /// Whether this backend supports writes
     writable: bool,
-    /// Whether to use atomic file writes (`OpenDAL` with fsync) vs direct writes (`tokio::fs` bypass)
-    atomic_file_writes: bool,
+    /// Whether writes are atomic (a failed write leaves nothing at the
+    /// destination path): true for object stores and for filesystem stores
+    /// using `atomic_write_dir`.
+    atomic_writes: bool,
 }
 
 impl OpendalStore {
     /// Create a new `OpendalStore` from a configured operator
-    fn from_operator(
+    pub(crate) fn from_operator(
         operator: Operator,
         prefix: impl Into<String>,
         root_path: Option<PathBuf>,
         writable: bool,
-        atomic_file_writes: bool,
+        atomic_writes: bool,
     ) -> Self {
         Self {
             operator,
             prefix: prefix.into(),
             root_path,
             writable,
-            atomic_file_writes,
+            atomic_writes,
         }
     }
 
@@ -496,7 +498,7 @@ impl OpendalStore {
         }
 
         let operator = Self::apply_layers(builder, config)?;
-        Ok(Self::from_operator(operator, prefix, None, false, false))
+        Ok(Self::from_operator(operator, prefix, None, true, true))
     }
 
     /// Create a Google Cloud Storage backend
@@ -519,7 +521,7 @@ impl OpendalStore {
         }
 
         let operator = Self::apply_layers(builder, config)?;
-        Ok(Self::from_operator(operator, prefix, None, false, false))
+        Ok(Self::from_operator(operator, prefix, None, true, true))
     }
 
     /// Create an Azure Blob Storage backend
@@ -546,7 +548,7 @@ impl OpendalStore {
         }
 
         let operator = Self::apply_layers(builder, config)?;
-        Ok(Self::from_operator(operator, prefix, None, false, false))
+        Ok(Self::from_operator(operator, prefix, None, true, true))
     }
 
     /// Create a Backblaze B2 storage backend
@@ -568,7 +570,7 @@ impl OpendalStore {
             .application_key(application_key);
 
         let operator = Self::apply_layers(builder, config)?;
-        Ok(Self::from_operator(operator, prefix, None, false, false))
+        Ok(Self::from_operator(operator, prefix, None, true, true))
     }
 
     /// Create an SFTP storage backend
@@ -615,7 +617,7 @@ impl OpendalStore {
         }
 
         let operator = Self::apply_layers(builder, config)?;
-        Ok(Self::from_operator(operator, prefix, None, false, false))
+        Ok(Self::from_operator(operator, prefix, None, true, true))
     }
 }
 
@@ -766,7 +768,7 @@ impl Storage for OpendalStore {
         // If we have a filesystem root and atomic writes are disabled, use direct tokio::fs writes
         // to bypass OpenDAL's WriteGenerator buffering and avoid the fsync in close().
         if let Some(root_path) = &self.root_path {
-            if !self.atomic_file_writes {
+            if !self.atomic_writes {
                 let copied_bytes = self
                     .copy_from_reader_direct(root_path, object, reader)
                     .await?;
@@ -791,7 +793,7 @@ impl Storage for OpendalStore {
     }
 
     fn uses_atomic_writes(&self) -> bool {
-        self.atomic_file_writes
+        self.atomic_writes
     }
 }
 

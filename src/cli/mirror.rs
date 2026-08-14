@@ -12,7 +12,8 @@ pub struct MirrorCmd {
     /// Source archive URL (http://, https://, file://)
     pub src: String,
 
-    /// Destination path (must be file://)
+    /// Destination archive URL (writable backend: file://, s3://, gcs://,
+    /// azblob://, b2://, swift://)
     pub dst: String,
 
     /// Mirror starting from this ledger (rounds down to previous checkpoint unless already one)
@@ -47,7 +48,7 @@ impl MirrorCmd {
 
         if !dst_store.supports_writes() {
             return Err(Error::Other(format!(
-                "Destination does not support writes: {}",
+                "Destination does not support writes: {} (writable backends: file://, s3://, gcs://, azblob://, b2://, swift://)",
                 self.dst
             )));
         }

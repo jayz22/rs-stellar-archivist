@@ -7,6 +7,8 @@ mod http_retry_test;
 #[cfg(test)]
 mod mirror_op_test;
 #[cfg(test)]
+mod object_store_write_test;
+#[cfg(test)]
 mod path_normalization_test;
 #[cfg(test)]
 mod pipeline_test;

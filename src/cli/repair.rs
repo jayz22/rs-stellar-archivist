@@ -13,7 +13,8 @@ pub struct RepairCmd {
     /// Source archive URL (known-good archive to fetch repairs from)
     pub src: String,
 
-    /// Destination archive path to repair (must be file://)
+    /// Destination archive URL to repair (writable backend: file://, s3://,
+    /// gcs://, azblob://, b2://, swift://)
     pub dst: String,
 
     /// Repair starting from this ledger (rounds down to previous checkpoint unless already one)
@@ -55,7 +56,7 @@ impl RepairCmd {
 
         if !dst_store.supports_writes() {
             return Err(Error::Other(format!(
-                "Destination does not support writes: {}",
+                "Destination does not support writes: {} (writable backends: file://, s3://, gcs://, azblob://, b2://, swift://)",
                 self.dst
             )));
         }
