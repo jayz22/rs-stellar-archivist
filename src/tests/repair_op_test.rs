@@ -4,8 +4,8 @@
 //! manual mode, dry run, error handling, idempotency, and CLI validation.
 
 use super::utils::{
-    copy_testnet_small_archive, corrupt_ledger_cross_file_hash, file_url_from_path,
-    get_files_by_pattern, start_http_server, testnet_small_archive_path,
+    copy_testnet_small_archive, corrupt_ledger_cross_file_hash, delete_first_file,
+    file_url_from_path, get_files_by_pattern, start_http_server, testnet_small_archive_path,
 };
 use crate::history_format;
 use crate::test_helpers::{
@@ -34,20 +34,6 @@ async fn mirror_testnet_small() -> (String, TempDir, String) {
         .expect("Mirror setup should succeed");
 
     (src_url, dest_dir, dest_url)
-}
-
-/// Delete a specific file pattern from the archive, returns the deleted file path (relative)
-fn delete_first_file(archive_path: &Path, pattern: &str) -> String {
-    let files = get_files_by_pattern(archive_path, pattern);
-    assert!(!files.is_empty(), "No files matching pattern '{pattern}'");
-    let file = &files[0];
-    let relative = file
-        .strip_prefix(archive_path)
-        .unwrap()
-        .to_string_lossy()
-        .replace('\\', "/");
-    std::fs::remove_file(file).expect("Failed to delete file");
-    relative
 }
 
 /// Corrupt a bucket file with garbage bytes (invalid gzip)

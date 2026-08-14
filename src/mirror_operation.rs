@@ -154,58 +154,25 @@ impl MirrorOperation {
         if should_update {
             // Copy the history file at the specified checkpoint to be our .well-known file
             let history_path = history_format::checkpoint_path("history", highest_checkpoint);
-            let well_known_path = ".well-known/stellar-history.json";
-
-            let dst_base = self.dst_store.get_base_path().ok_or_else(|| {
-                std::io::Error::new(
-                    std::io::ErrorKind::Unsupported,
-                    "Destination storage backend does not have a filesystem path",
-                )
-            })?;
-
-            let src_file = dst_base.join(&history_path);
-            let dst_file = dst_base.join(well_known_path);
 
             // Check if the history file exists (it might not if the mirror had failures)
-            if !tokio::fs::try_exists(&src_file).await.unwrap_or(false) {
+            if !self.dst_store.exists(&history_path).await? {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
                     format!(
                         "Cannot update .well-known: history file at checkpoint {} (0x{:08x}) was not successfully mirrored ({})",
-                        highest_checkpoint, highest_checkpoint,
-                        src_file.display()
+                        highest_checkpoint, highest_checkpoint, history_path
                     ),
                 )
                 .into());
             }
 
-            // Ensure the .well-known directory exists
-            if let Some(parent) = dst_file.parent() {
-                tokio::fs::create_dir_all(parent).await.map_err(|e| {
-                    std::io::Error::new(
-                        e.kind(),
-                        format!("Failed to create directory {}: {}", parent.display(), e),
-                    )
-                })?;
-            }
-
-            crate::utils::write_well_known_from_history(
-                &src_file,
-                &dst_file,
+            crate::utils::update_well_known_from_history(
+                &self.dst_store,
+                &history_path,
                 self.pipeline_config.source_network_passphrase.as_deref(),
             )
-            .await
-            .map_err(|e| {
-                std::io::Error::new(
-                    e.kind(),
-                    format!(
-                        "Failed to write .well-known {} from {}: {}",
-                        dst_file.display(),
-                        src_file.display(),
-                        e
-                    ),
-                )
-            })?;
+            .await?;
 
             info!(
                 "Updated destination .well-known to checkpoint {} (0x{:08x})",

@@ -496,44 +496,36 @@ impl RepairOperation {
     }
 
     /// Restore `.well-known/stellar-history.json` by copying the highest
-    /// checkpoint's history file on the destination — a local dst-to-dst copy,
-    /// not a fetch from the source.
+    /// checkpoint's history file on the destination — a dst-to-dst copy
+    /// through the Storage trait, not a fetch from the source.
     ///
-    /// Returns `true` if `.well-known` is in its intended state (restored, or a
-    /// no-op on a non-filesystem backend) and `false` if a needed restoration
-    /// failed, so the caller can fail the run rather than report success with
-    /// `.well-known` still broken.
+    /// Returns `true` if `.well-known` was restored and `false` if a needed
+    /// restoration failed, so the caller can fail the run rather than report
+    /// success with `.well-known` still broken.
     async fn repair_well_known(&self, highest_checkpoint: u32) -> bool {
         let history_path = history_format::checkpoint_path("history", highest_checkpoint);
-        let well_known_path = history_format::ROOT_WELL_KNOWN_PATH;
 
-        let Some(base_path) = self.dst_store.get_base_path() else {
-            // Non-filesystem backend: nothing to copy locally. R-3.11 permits
-            // a silent no-op (no writable non-filesystem backend exists today).
-            return true;
-        };
-
-        let src_file = base_path.join(&history_path);
-        let dst_file = base_path.join(well_known_path);
-
-        if !tokio::fs::try_exists(&src_file).await.unwrap_or(false) {
-            error!(
-                "Cannot repair .well-known: history file at checkpoint {} not found",
-                highest_checkpoint
-            );
-            return false;
-        }
-
-        if let Some(parent) = dst_file.parent() {
-            if let Err(e) = tokio::fs::create_dir_all(parent).await {
-                error!("Failed to create .well-known directory: {}", e);
+        match self.dst_store.exists(&history_path).await {
+            Ok(true) => {}
+            Ok(false) => {
+                error!(
+                    "Cannot repair .well-known: history file at checkpoint {} not found",
+                    highest_checkpoint
+                );
+                return false;
+            }
+            Err(e) => {
+                error!(
+                    "Cannot repair .well-known: failed to probe history file at checkpoint {}: {}",
+                    highest_checkpoint, e
+                );
                 return false;
             }
         }
 
-        match crate::utils::write_well_known_from_history(
-            &src_file,
-            &dst_file,
+        match crate::utils::update_well_known_from_history(
+            &self.dst_store,
+            &history_path,
             self.pipeline_config.source_network_passphrase.as_deref(),
         )
         .await

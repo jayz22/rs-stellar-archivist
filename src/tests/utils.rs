@@ -155,6 +155,20 @@ pub fn set_network_passphrase(archive_dir: &Path, passphrase: &str) {
     .expect("write .well-known");
 }
 
+/// Delete a specific file pattern from the archive, returns the deleted file path (relative)
+pub(crate) fn delete_first_file(archive_path: &Path, pattern: &str) -> String {
+    let files = get_files_by_pattern(archive_path, pattern);
+    assert!(!files.is_empty(), "No files matching pattern '{pattern}'");
+    let file = &files[0];
+    let relative = file
+        .strip_prefix(archive_path)
+        .unwrap()
+        .to_string_lossy()
+        .replace('\\', "/");
+    std::fs::remove_file(file).expect("Failed to delete file");
+    relative
+}
+
 /// Get all files of a specific type from the archive
 pub fn get_files_by_pattern(archive_path: &Path, pattern: &str) -> Vec<PathBuf> {
     let mut files = Vec::new();
