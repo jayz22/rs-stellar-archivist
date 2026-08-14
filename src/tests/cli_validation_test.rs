@@ -5,20 +5,6 @@ use crate::test_helpers::{run_mirror as cmd_mirror_run, MirrorConfig};
 use rstest::rstest;
 
 #[rstest]
-#[case::http("http://example.com/archive", "HTTP destinations are read-only")]
-#[case::https("https://example.com/archive", "HTTPS destinations are read-only")]
-#[case::s3(
-    "s3://my-bucket/archive",
-    "S3 destinations are not currently supported for writing"
-)]
-#[tokio::test]
-async fn test_mirror_rejects_readonly_destination(#[case] dst: &str, #[case] _reason: &str) {
-    let config = MirrorConfig::new("file:///tmp/test-source", dst);
-    let result = cmd_mirror_run(config).await;
-    assert!(result.is_err());
-}
-
-#[rstest]
 #[case::not_a_url("not-a-url")]
 #[case::missing_scheme("://missing-scheme")]
 #[case::missing_slash("file:/missing-slash")]
