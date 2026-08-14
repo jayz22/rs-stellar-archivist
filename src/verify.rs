@@ -4,11 +4,11 @@
 //! filename and verified against the decompressed content.
 
 use crate::history_format::bucket_hash_from_path;
-use crate::storage::{from_opendal_error, Error as StorageError, StorageRef};
+use crate::storage::{from_opendal_error, Error as StorageError, StagedWriter, StorageRef};
 use async_compression::tokio::bufread::GzipDecoder;
 use bytes::Bytes;
 use futures_util::StreamExt;
-use opendal::{Reader, Writer};
+use opendal::Reader;
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, BufReader};
 use tracing::debug;
@@ -16,16 +16,16 @@ use tracing::debug;
 const HASH_BUFFER_SIZE: usize = 64 * 1024;
 const CHANNEL_CAPACITY: usize = 64;
 
-/// Decompress and hash the given reader's content and verify it against the expected hash.
-/// If `writer` is provided, compressed bytes are written to it while verifying.
+/// Decompress and hash the given reader's content and verify it against the expected hash,
+/// returning the number of decompressed bytes.
+///
+/// If `staged` is provided, compressed bytes are streamed into it while verifying; the
+/// staged write is not committed or aborted here — that is the caller's decision.
 async fn verify_bucket_maybe_write(
     path: &str,
     reader: Reader,
-    writer: Option<Writer>,
-) -> Result<(), StorageError> {
-    let bucket_phase = crate::phase!(crate::metrics::Phase::BucketStream);
-    use futures_util::SinkExt;
-
+    mut staged: Option<&mut StagedWriter>,
+) -> Result<u64, StorageError> {
     let expected = bucket_hash_from_path(path)
         .ok_or_else(|| StorageError::fatal(format!("Invalid bucket path: {}", path)))?;
 
@@ -61,19 +61,15 @@ async fn verify_bucket_maybe_write(
     });
 
     futures_util::pin_mut!(stream);
-    let mut sink = writer.map(|w| w.into_sink());
     let mut streaming_error: Option<StorageError> = None;
 
     while let Some(result) = stream.next().await {
         match result {
             Ok(buffer) => {
                 // Write to destination if provided
-                if let Some(ref mut s) = sink {
-                    if let Err(e) = s.send(buffer.clone()).await {
-                        streaming_error = Some(from_opendal_error(
-                            e,
-                            &format!("Failed to write to {}", path),
-                        ));
+                if let Some(w) = staged.as_deref_mut() {
+                    if let Err(e) = w.write(buffer.clone()).await {
+                        streaming_error = Some(e);
                         break;
                     }
                 }
@@ -112,57 +108,48 @@ async fn verify_bucket_maybe_write(
         .map_err(|e| StorageError::retry(format!("Failed to decompress {}: {}", path, e)))?;
 
     if actual != expected {
-        // Don't close sink - avoids committing corrupt data on atomic backends
+        // Don't commit — caller aborts the staged write.
         return Err(StorageError::fatal(format!(
             "Hash mismatch for {}: expected {}, got {}",
             path, expected, actual
         )));
     }
 
-    if let Some(mut s) = sink {
-        s.close()
-            .await
-            .map_err(|e| from_opendal_error(e, &format!("Failed to close {}", path)))?;
-    }
+    Ok(decompressed_bytes)
+}
 
+/// Verify a bucket file's hash (scan operation) — stream + hash, no write.
+pub async fn verify_bucket_stream(path: &str, reader: Reader) -> Result<(), StorageError> {
+    debug!("Verifying bucket hash for {}", path);
+    let bucket_phase = crate::phase!(crate::metrics::Phase::BucketStream);
+    let decompressed_bytes = verify_bucket_maybe_write(path, reader, None).await?;
     bucket_phase.record_file(decompressed_bytes);
-
     Ok(())
 }
 
-/// Verify a bucket file's hash (scan operation).
-///
-/// Delegates to the production async streaming path
-/// ([`verify_bucket_maybe_write`] with no writer), the shipped decode used by
-/// scan-verify.
-pub async fn verify_bucket_stream(path: &str, reader: Reader) -> Result<(), StorageError> {
-    debug!("Verifying bucket hash for {}", path);
-    verify_bucket_maybe_write(path, reader, None).await
-}
-
-/// Verify and write a bucket file (mirror operation).
-/// Hash is verified before committing the write.
-///
-/// On non-atomic backends the compressed stream is written to a `.tmp`
-/// sibling and renamed to `path` only after the hash verifies — the same
-/// scheme as `verify_and_write_xdr` — so a failed or interrupted write never
-/// disturbs a pre-existing file at `path`. Atomic backends commit on
-/// `close()` internally.
+/// Verify and write a bucket file (mirror/repair). The staged write is
+/// committed only after the hash verifies; on any failure it is aborted,
+/// so nothing becomes visible at the destination path.
 pub async fn verify_and_write_bucket(
     path: &str,
     reader: Reader,
     dst_store: &StorageRef,
 ) -> Result<(), StorageError> {
     debug!("Verifying and writing bucket {}", path);
-    let write_path: String = if dst_store.uses_atomic_writes() {
-        path.to_string()
-    } else {
-        format!("{path}.tmp")
-    };
-    let writer = dst_store.open_writer(&write_path).await?;
-    if let Err(e) = verify_bucket_maybe_write(path, reader, Some(writer)).await {
-        crate::xdr_verify::cleanup_non_atomic_partial_write(&write_path, dst_store).await;
-        return Err(e);
+    // Opening the destination is not part of the streaming phase.
+    let mut staged = dst_store.open_staged_writer(path).await?;
+    // The phase spans streaming and the commit that makes the bytes visible;
+    // the file is counted only once both have succeeded.
+    let bucket_phase = crate::phase!(crate::metrics::Phase::BucketStream);
+    match verify_bucket_maybe_write(path, reader, Some(&mut staged)).await {
+        Ok(decompressed_bytes) => {
+            staged.commit().await?;
+            bucket_phase.record_file(decompressed_bytes);
+            Ok(())
+        }
+        Err(e) => {
+            staged.abort().await;
+            Err(e)
+        }
     }
-    crate::xdr_verify::commit_non_atomic_write(dst_store, &write_path, path).await
 }

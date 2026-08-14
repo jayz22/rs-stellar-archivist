@@ -27,11 +27,10 @@ use tempfile::TempDir;
 use walkdir::WalkDir;
 
 #[tokio::test]
-async fn mock_object_store_has_object_store_semantics() {
+async fn mock_object_store_is_writable_with_no_base_path() {
     let dir = TempDir::new().unwrap();
     let store = mock_object_store(dir.path());
     assert!(store.supports_writes());
-    assert!(store.uses_atomic_writes());
     assert!(store.get_base_path().is_none());
 }
 
@@ -110,7 +109,7 @@ async fn verified_write_of_corrupt_bucket_leaves_nothing_at_final_path() {
 
 #[cfg(feature = "opendal-s3")]
 #[tokio::test]
-async fn s3_store_is_writable_and_atomic() {
+async fn s3_store_is_writable_with_no_base_path() {
     let store = OpendalStore::s3(
         "test-bucket",
         Some("us-east-1"),
@@ -122,7 +121,6 @@ async fn s3_store_is_writable_and_atomic() {
     )
     .expect("construct S3 store");
     assert!(store.supports_writes());
-    assert!(store.uses_atomic_writes());
     assert!(store.get_base_path().is_none());
 }
 

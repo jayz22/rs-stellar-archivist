@@ -14,8 +14,8 @@ history. The CLI has three modes, all built on the same pipeline:
   with `--verify`, validates their contents.
 - **`mirror`**: copy from a source archive to a writable destination, with
   resume support.
-- **`repair`**: fix a local destination archive by re-fetching missing or corrupt
-  files from a known-good source.
+- **`repair`**: fix a local or cloud-hosted destination archive by re-fetching
+  missing or corrupt files from a known-good source.
 
 ## Archive Format
 
@@ -112,8 +112,8 @@ the highest successfully mirrored history file when appropriate.
 
 ### Repair
 
-`RepairOperation` fixes a local destination against a known-good source. It is a
-small multi-phase workflow:
+`RepairOperation` fixes a local or cloud-hosted destination against a known-good
+source. It is a small multi-phase workflow:
 
 1. Discover missing or corrupt destination files. In `--dry-run`, stop here and
    write a plan/report.
@@ -158,24 +158,46 @@ agree as a set, so repair may re-fetch the whole checkpoint.
 
 ## Storage
 
-`storage.rs` exposes a `Storage` trait with reader, existence, writer, and copy
-operations. Backends are selected from URL schemes by `from_url_with_config`.
+`storage.rs` exposes a `Storage` trait with reader, existence, staged-write, and
+copy operations. Backends are selected from URL schemes by
+`from_url_with_config`.
 
 | Scheme | Backend | Writable |
 |---|---|---|
 | `file://` | local filesystem | yes |
+| `s3://`, `gcs://`/`gs://`, `azblob://`/`azure://`, `b2://`, `swift://` | feature-gated cloud object stores | yes |
 | `http://`, `https://` | HTTP/HTTPS | no |
-| `s3://`, `gcs://`/`gs://`, `azblob://`/`azure://`, `b2://`, `swift://`, `sftp://` | feature-gated cloud backends | no |
+| `sftp://` | feature-gated SFTP | no |
 
 Each backend is built as an OpenDAL operator with common layers: timeout,
 concurrency limit, logging, an HTTP client where needed, and optional bandwidth
 throttling.
 
-Filesystem writes are the only supported destination writes. With
-`--atomic-file-writes`, OpenDAL handles atomic writes with fsync. Without it,
-the filesystem destination write path uses direct `tokio::fs` writes to a temp
-file followed by rename, which avoids OpenDAL writer overhead but bypasses
-OpenDAL layers on the destination write side.
+### Writes
+
+Every archive write — plain copies, verified bucket and XDR writes, and
+`.well-known` updates — goes through `Storage::open_staged_writer` and the
+`StagedWriter` it returns. A staged writer is fed chunks and then either
+committed, which makes the bytes visible at the final path, or aborted, which
+leaves nothing there. Dropping one without committing is equivalent to aborting.
+Callers never build temp paths or clean up partial files themselves; that is the
+writer's job, and it is what lets verification decide to commit only after the
+content has passed its checks.
+
+Two staging mechanisms sit behind that single interface:
+
+- **Commit on close**: cloud object stores, where the object appears only when
+  the upload completes, and filesystem destinations run with
+  `--atomic-file-writes`, where OpenDAL's `atomic_write_dir` does its own
+  temp-file-plus-rename with fsync.
+- **`.tmp` sibling**: plain filesystem destinations, which write directly with
+  `tokio::fs` to `<path>.tmp` and rename on commit, without fsync.
+
+`--atomic-file-writes` therefore chooses between the two filesystem mechanisms
+and has no effect on object-store destinations. Plain filesystem staging talks
+to the file directly rather than through the operator, so the layers listed
+above apply to reads and to atomic-mode writes, but not to plain filesystem
+writes.
 
 ## Concurrency
 

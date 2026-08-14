@@ -241,13 +241,6 @@ pub trait Storage: Send + Sync {
         Err(Error::fatal("Write not supported by this backend"))
     }
 
-    /// Open an `OpenDAL` writer for the object with buffering enabled.
-    /// Only supported by writable backends (filesystem and cloud object stores).
-    /// Caller is responsible for calling `writer.close()` after writing.
-    async fn open_writer(&self, _object: &str) -> Result<Writer, Error> {
-        Err(Error::fatal("Write not supported by this backend"))
-    }
-
     /// Write an entire buffer to an object.
     /// Only supported by writable backends (filesystem and cloud object stores).
     async fn write(&self, object: &str, data: Buffer) -> Result<(), Error> {
@@ -305,15 +298,10 @@ pub trait Storage: Send + Sync {
         false
     }
 
-    /// Get the base filesystem path if this is a filesystem backend
+    /// Get the base filesystem path if this is a filesystem backend.
+    /// Introspection only — production write paths never consult this.
     fn get_base_path(&self) -> Option<&std::path::Path> {
         None
-    }
-
-    /// Check if this backend uses atomic writes (temp file + rename).
-    /// When true, failed writes don't leave partial files at the destination.
-    fn uses_atomic_writes(&self) -> bool {
-        false
     }
 }
 
@@ -848,37 +836,12 @@ impl Storage for OpendalStore {
         }
     }
 
-    async fn open_writer(&self, object: &str) -> Result<Writer, Error> {
-        if !self.writable {
-            return Err(Error::fatal("Write not supported by this backend"));
-        }
-
-        let key = self.object_to_key(object);
-
-        // Use writer_with to enable buffered/chunked writing for better performance
-        // All backends write through OpenDAL, which applies ConcurrentLimitLayer
-        // Filesystem backends use atomic_write_dir for atomic writes (temp file + rename)
-        let writer = self.operator.writer_with(&key).await.map_err(|e| {
-            let class = classify_opendal_error(&e);
-            Error {
-                class,
-                message: format!("Failed to open writer for {key}: {e}"),
-            }
-        })?;
-
-        Ok(writer)
-    }
-
     fn supports_writes(&self) -> bool {
         self.writable
     }
 
     fn get_base_path(&self) -> Option<&Path> {
         self.root_path.as_deref()
-    }
-
-    fn uses_atomic_writes(&self) -> bool {
-        self.atomic_writes
     }
 }
 

@@ -17,11 +17,11 @@
 //! - Cross-checkpoint hash chain: first ledger's `previous_ledger_hash` matches prior checkpoint's last hash
 
 use crate::history_format::{self, CHECKPOINT_FREQUENCY, GENESIS_CHECKPOINT_LEDGER};
-use crate::storage::{from_opendal_error, Error as StorageError, StorageRef};
+use crate::storage::{from_opendal_error, Error as StorageError, StagedWriter, StorageRef};
 use async_compression::tokio::bufread::GzipDecoder;
 use bytes::Bytes;
 use futures_util::StreamExt;
-use opendal::{Reader, Writer};
+use opendal::Reader;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::io::Cursor;
@@ -1072,11 +1072,10 @@ pub async fn parse_ledger_header_stream(
     reader: Reader,
 ) -> Result<BTreeMap<u32, LedgerHeaderVerificationData>, StorageError> {
     let cp = history_format::checkpoint_from_path(path);
-    Ok(decompress_then(path, reader, None, move |b| {
+    decompress_then(path, reader, None, move |b| {
         parse_ledger_header_entries_for_checkpoint(b, cp)
     })
-    .await?
-    .0)
+    .await
 }
 
 /// Decompress a gzipped result file from a reader and parse it.
@@ -1086,11 +1085,10 @@ pub async fn parse_results_stream(
     reader: Reader,
 ) -> Result<BTreeMap<u32, Hash>, StorageError> {
     let cp = history_format::checkpoint_from_path(path);
-    Ok(decompress_then(path, reader, None, move |b| {
+    decompress_then(path, reader, None, move |b| {
         parse_result_entries_for_checkpoint(b, cp)
     })
-    .await?
-    .0)
+    .await
 }
 
 /// Parse decompressed transaction XDR data, computing content hashes per ledger.
@@ -1176,18 +1174,15 @@ pub async fn parse_transactions_stream(
     reader: Reader,
 ) -> Result<BTreeMap<u32, Hash>, StorageError> {
     let cp = history_format::checkpoint_from_path(path);
-    Ok(decompress_then(path, reader, None, move |b| {
+    decompress_then(path, reader, None, move |b| {
         parse_transaction_entries_for_checkpoint(b, cp)
     })
-    .await?
-    .0)
+    .await
 }
 
 /// Decompress a gzipped SCP file from a reader and validate its frame structure.
 pub async fn parse_scp_stream(path: &str, reader: Reader) -> Result<(), StorageError> {
-    decompress_then(path, reader, None, parse_scp_entries)
-        .await
-        .map(|(parsed, _sink)| parsed)
+    decompress_then(path, reader, None, parse_scp_entries).await
 }
 
 /// Result of parsing an XDR archive file during a verified mirror write.
@@ -1201,28 +1196,26 @@ pub enum XdrParseResult {
 }
 
 /// Streaming core for every XDR file: read gzipped bytes from `reader`,
-/// optionally tee the still-compressed bytes to `writer`, gzip-decode to a
+/// optionally tee the still-compressed bytes into `staged`, gzip-decode to a
 /// buffer, and run `parse` on it ALL inside one spawned task (gzip decode AND
 /// the XDR parse/hash leave the orchestration task; the caller only feeds
-/// chunks). Returns the parse result alongside the **unclosed** sink (`None`
-/// when `writer` is `None`); the caller commits a write only after `parse`
-/// succeeds (parse-before-commit), so a parse failure never leaves committed
-/// corrupt data.
+/// chunks). The staged write is never committed or aborted here; the caller
+/// commits only after `parse` succeeds.
 ///
 /// Error classes (the pipeline retries only `ErrorClass::Retry`): gzip framing
 /// → `retry`; XDR parse/hash → whatever `parse` returns (`fatal` in practice);
-/// storage I/O → opendal-classified; channel-closed or task panic → `fatal`.
+/// source reads → opendal-classified; destination staging I/O →
+/// backend-classified; channel-closed or task panic → `fatal`.
 async fn decompress_then<T>(
     path: &str,
     reader: Reader,
-    writer: Option<Writer>,
+    mut staged: Option<&mut StagedWriter>,
     parse: impl FnOnce(&[u8]) -> Result<T, StorageError> + Send + 'static,
-) -> Result<(T, Option<opendal::BufferSink>), StorageError>
+) -> Result<T, StorageError>
 where
     T: Send + 'static,
 {
     let decompress_phase = crate::phase!(crate::metrics::Phase::XdrDecompress);
-    use futures_util::SinkExt;
 
     let stream = reader
         .into_stream(..)
@@ -1257,18 +1250,14 @@ where
     });
 
     futures_util::pin_mut!(stream);
-    let mut sink = writer.map(|w| w.into_sink());
     let mut streaming_error: Option<StorageError> = None;
 
     while let Some(result) = stream.next().await {
         match result {
             Ok(buffer) => {
-                if let Some(ref mut s) = sink {
-                    if let Err(e) = s.send(buffer.clone()).await {
-                        streaming_error = Some(from_opendal_error(
-                            e,
-                            &format!("failed to write to {}", path),
-                        ));
+                if let Some(w) = staged.as_deref_mut() {
+                    if let Err(e) = w.write(buffer.clone()).await {
+                        streaming_error = Some(e);
                         break;
                     }
                 }
@@ -1298,7 +1287,7 @@ where
 
     if let Some(err) = streaming_error {
         task.abort();
-        return Err(err); // sink dropped here unclosed — caller cleans up
+        return Err(err); // caller aborts the staged write
     }
 
     let (parsed, len) = task.await.map_err(|e| {
@@ -1310,66 +1299,7 @@ where
 
     decompress_phase.record_file(len);
 
-    Ok((parsed, sink))
-}
-
-/// Remove a partially-written file after a verified-write fails.
-///
-/// - **Atomic backends**: no-op — dropping the sink without `close()` already
-///   prevents the temp-to-target rename, so nothing landed at `path`.
-/// - **Non-atomic backends**: data sent via `sink.send()` is written directly
-///   to `path`, so the abandoned partial file is `tokio::fs::remove_file`'d.
-///   `NotFound` is silently tolerated; other errors are warned but not raised.
-///
-/// Safe to call on backends without a base path (e.g. HTTP) — does nothing.
-pub(crate) async fn cleanup_non_atomic_partial_write(path: &str, dst_store: &StorageRef) {
-    if dst_store.uses_atomic_writes() {
-        return;
-    }
-    if let Some(base_path) = dst_store.get_base_path() {
-        let file_path = base_path.join(path);
-        if let Err(remove_err) = tokio::fs::remove_file(&file_path).await {
-            if remove_err.kind() != std::io::ErrorKind::NotFound {
-                warn!(
-                    "failed to remove partially written file {} after error: {}",
-                    file_path.display(),
-                    remove_err
-                );
-            }
-        }
-    }
-}
-
-/// Commit a verified write performed at `write_path` to its final `path`.
-///
-/// - **Atomic backends**: `write_path == path` (the backend already committed
-///   via its own temp-to-target rename on `close()`) — no-op.
-/// - **Non-atomic backends**: rename the `.tmp` sibling to the final path.
-///   The temp is removed on rename failure to avoid leaking `.tmp` files;
-///   the pre-existing file at `path` (if any) is only replaced by the rename,
-///   never deleted on failure.
-pub(crate) async fn commit_non_atomic_write(
-    dst_store: &StorageRef,
-    write_path: &str,
-    path: &str,
-) -> Result<(), StorageError> {
-    if write_path == path {
-        return Ok(());
-    }
-    if let Some(base) = dst_store.get_base_path() {
-        let tmp_full = base.join(write_path);
-        let final_full = base.join(path);
-        if let Err(e) = tokio::fs::rename(&tmp_full, &final_full).await {
-            let _ = tokio::fs::remove_file(&tmp_full).await;
-            return Err(StorageError::fatal(format!(
-                "failed to rename {} to {}: {}",
-                tmp_full.display(),
-                final_full.display(),
-                e
-            )));
-        }
-    }
-    Ok(())
+    Ok(parsed)
 }
 
 /// Decompress, verify XDR structure, and write to destination in a single
@@ -1382,11 +1312,6 @@ pub(crate) async fn commit_non_atomic_write(
 /// - **scp** → `XdrParseResult::None` (frame structure validated, no hashes)
 /// - other → `XdrParseResult::None`
 ///
-/// Atomicity: the sink is closed (committing the write) only after the
-/// in-memory decompressed payload parses successfully. On parse or
-/// decompression failure the sink is dropped without close; for non-atomic
-/// backends the partial file is additionally removed on disk.
-///
 /// Caller passes the returned hashes to
 /// [`XdrVerificationManager::record_*`](XdrVerificationManager) for
 /// cross-file verification.
@@ -1395,25 +1320,11 @@ pub async fn verify_and_write_xdr(
     reader: Reader,
     dst_store: &StorageRef,
 ) -> Result<XdrParseResult, StorageError> {
-    use futures_util::SinkExt;
-
-    // For non-atomic backends, write to a `.tmp` sibling first and rename to
-    // `path` only after parsing succeeds. This prevents a partial file from
-    // being visible at the final path if the process is killed mid-stream
-    // (SIGKILL, OOM), which would otherwise cause `pre_check()` to skip
-    // re-downloading on resume. Atomic backends handle this internally.
-    let write_path: String = if dst_store.uses_atomic_writes() {
-        path.to_string()
-    } else {
-        format!("{path}.tmp")
-    };
-
-    let writer = dst_store.open_writer(&write_path).await?;
+    let mut staged = dst_store.open_staged_writer(path).await?;
 
     // Decode + parse run together in the spawned task. The closure captures
-    // only owned data (the logical `path` for file-type detection and `cp`) so
-    // it is `Send + 'static`. Classify on `path`, NOT `write_path`, so a `.tmp`
-    // sibling is never misread as an unrecognized type.
+    // only owned data (the logical `path` for file-type detection and `cp`)
+    // so it is `Send + 'static`.
     let cp = history_format::checkpoint_from_path(path);
     let path_owned = path.to_string();
     let parse = move |b: &[u8]| -> Result<XdrParseResult, StorageError> {
@@ -1430,23 +1341,14 @@ pub async fn verify_and_write_xdr(
         }
     };
 
-    match decompress_then(&write_path, reader, Some(writer), parse).await {
-        Ok((result, sink)) => {
-            // Parse passed — close the sink to commit the write.
-            if let Some(mut s) = sink {
-                s.close().await.map_err(|e| {
-                    from_opendal_error(e, &format!("failed to close {}", write_path))
-                })?;
-            }
-            // Non-atomic FS backend: rename the temp to the final path.
-            commit_non_atomic_write(dst_store, &write_path, path).await?;
+    match decompress_then(path, reader, Some(&mut staged), parse).await {
+        Ok(result) => {
+            staged.commit().await?;
             Ok(result)
         }
         Err(e) => {
-            // Decode or parse failed — `decompress_then` dropped the sink unclosed
-            // (no commit on atomic backends). On non-atomic backends partial data
-            // may be on disk via send(), so remove it.
-            cleanup_non_atomic_partial_write(&write_path, dst_store).await;
+            // Decode/parse/stream failure — nothing may remain visible.
+            staged.abort().await;
             Err(e)
         }
     }
@@ -1462,13 +1364,6 @@ pub async fn verify_and_write_xdr(
 /// - xdr per-cp file + manager → [`verify_and_write_xdr`] + record into manager
 /// - everything else (and the manager-off path) → plain
 ///   [`crate::storage::Storage::copy_from_reader`]
-///
-/// Every branch writes via a temp artifact (`.tmp` sibling on non-atomic
-/// backends, the backend's own temp-to-target rename on atomic ones) and
-/// cleans up after itself on failure — a failed fetch never disturbs a
-/// pre-existing file at `path`. Repair's failed-list mode relies on this:
-/// it force-fetches listed files that may still be valid on dst, and a
-/// transient src failure must not destroy that copy.
 pub async fn fetch_verify_and_write(
     src_store: &StorageRef,
     dst_store: &StorageRef,
