@@ -411,7 +411,7 @@ impl Operation for MirrorOperation {
             history_format::parse_history(&buffer, path)
         }
         .map_err(|e| StorageError::fatal(format!("failed to parse history {path}: {e}")))?;
-        storage::write_buffer_with_cleanup(&self.dst_store, path, buffer).await?;
+        self.dst_store.write(path, buffer).await?;
         Ok(HistoryOutcome {
             outcome: ProcessOutcome::Processed,
             state: Some(state),

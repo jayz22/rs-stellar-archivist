@@ -671,12 +671,9 @@ pub async fn update_well_known_from_history(
             "Failed to stamp network passphrase into {history_path}: {e}"
         ))
     })?;
-    crate::storage::write_buffer_with_cleanup(
-        store,
-        crate::history_format::ROOT_WELL_KNOWN_PATH,
-        contents.into(),
-    )
-    .await
+    store
+        .write(crate::history_format::ROOT_WELL_KNOWN_PATH, contents.into())
+        .await
 }
 
 /// Compute checkpoint bounds using a pre-fetched source checkpoint

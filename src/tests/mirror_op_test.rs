@@ -632,10 +632,10 @@ async fn test_mirror_replaces_empty_files() {
 /// partial files at the final path, preventing silent corruption on resume.
 ///
 /// Two cases cover the two distinct write paths in `MirrorOperation::process_object`:
-/// - `no_verify`: ledger files go through `OpendalStore::copy_from_reader_direct`
-///   (storage.rs) — pure tokio::fs temp+rename.
-/// - `verify`: ledger files go through `xdr_verify::verify_and_write_xdr` —
-///   OpenDAL writer/sink + tokio::fs::rename at commit.
+/// - `no_verify`: ledger files go through `Storage::copy_from_reader` — a
+///   `StagedWriter` on the fs-staged path, i.e. tokio::fs temp+rename.
+/// - `verify`: ledger files go through `xdr_verify::verify_and_write_xdr` — the
+///   same fs-staged `StagedWriter`, committed only after the parse succeeds.
 ///
 /// Scenario: mirror checkpoints 63 and 127, simulate a crash on a ledger file
 /// at checkpoint 127 by deleting the final file and leaving a truncated `.tmp`

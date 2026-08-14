@@ -164,13 +164,10 @@ async fn update_well_known_writes_through_the_storage_trait() {
     let history_path = crate::history_format::checkpoint_path("history", 1023);
 
     // Plant the history file *through the store* (no fs paths).
-    crate::storage::write_buffer_with_cleanup(
-        &store,
-        &history_path,
-        br#"{"currentLedger": 1023}"#.to_vec().into(),
-    )
-    .await
-    .unwrap();
+    store
+        .write(&history_path, br#"{"currentLedger": 1023}"#.to_vec().into())
+        .await
+        .unwrap();
 
     update_well_known_from_history(&store, &history_path, Some("P"))
         .await

@@ -21,6 +21,8 @@ mod report_test;
 #[cfg(test)]
 mod scan_op_test;
 #[cfg(test)]
+mod staged_writer_test;
+#[cfg(test)]
 pub(crate) mod utils;
 #[cfg(test)]
 mod verify_test;
