@@ -62,10 +62,11 @@ impl Error {
 
 pub type StorageRef = Arc<dyn Storage + Send + Sync>;
 
-/// A write whose visibility at the final object path is controlled by the
-/// caller: nothing is visible at the destination until `commit()` succeeds,
-/// and `abort()` (or dropping without commit) guarantees nothing remains at
-/// the final path.
+/// A staged write: the data being written is not visible at the final object
+/// path until `commit()` succeeds; `abort()` (or dropping without commit)
+/// leaves the final path unchanged. Only an explicit `abort()` also cleans up
+/// staged data — a bare drop can leave a `.tmp` sibling (plain fs) or an
+/// unfinished multipart upload (object stores).
 pub struct StagedWriter {
     inner: StagedInner,
     /// Final object path (archive-relative), for error messages.
@@ -196,7 +197,8 @@ impl StagedWriter {
         Ok(self.bytes_written)
     }
 
-    /// Guarantee nothing is visible at the final path. Best-effort, infallible.
+    /// Discard the staged data, leaving the final path unchanged. Best-effort,
+    /// infallible.
     pub async fn abort(self) {
         match self.inner {
             StagedInner::AtomicOnClose { mut writer } => {

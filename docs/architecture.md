@@ -179,7 +179,10 @@ Every archive write — plain copies, verified bucket and XDR writes, and
 `.well-known` updates — goes through `Storage::open_staged_writer` and the
 `StagedWriter` it returns. A staged writer is fed chunks and then either
 committed, which makes the bytes visible at the final path, or aborted, which
-leaves nothing there. Dropping one without committing is equivalent to aborting.
+discards the staged data and leaves the final path unchanged — a pre-existing
+object being overwritten survives intact. Dropping a writer without committing
+also leaves the final path unchanged, but only an explicit abort cleans up the
+staged data (the `.tmp` sibling, or the backend's in-flight upload).
 Callers never build temp paths or clean up partial files themselves; that is the
 writer's job, and it is what lets verification decide to commit only after the
 content has passed its checks.
