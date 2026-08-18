@@ -62,6 +62,12 @@ impl Error {
 
 pub type StorageRef = Arc<dyn Storage + Send + Sync>;
 
+/// Upload part/block size for object-store writes. Meets every backend's
+/// minimum part size (5 MiB on S3/GCS/B2), keeps large files under per-object
+/// part-count caps (50,000 blocks on Azure, 10,000 parts elsewhere), and
+/// bounds per-writer buffering.
+const OBJECT_STORE_WRITE_CHUNK_SIZE: usize = 8 * 1024 * 1024;
+
 /// A staged write: the data being written is not visible at the final object
 /// path until `commit()` succeeds; `abort()` (or dropping without commit)
 /// leaves the final path unchanged. Only an explicit `abort()` also cleans up
@@ -673,7 +679,10 @@ impl OpendalStore {
         Ok(Self::from_operator(operator, prefix, None, false, false))
     }
 
-    /// Create an `OpenStack` Swift storage backend
+    /// Create an `OpenStack` Swift storage backend.
+    ///
+    /// Read-only: opendal's Swift writer uploads an object in a single
+    /// request and cannot stream archive-sized files.
     #[cfg(feature = "opendal-swift")]
     pub fn swift(
         container: &str,
@@ -690,7 +699,7 @@ impl OpendalStore {
         }
 
         let operator = Self::apply_layers(builder, config)?;
-        Ok(Self::from_operator(operator, prefix, None, true, true))
+        Ok(Self::from_operator(operator, prefix, None, false, false))
     }
 }
 
@@ -821,7 +830,15 @@ impl Storage for OpendalStore {
         }
         if self.atomic_writes {
             let key = self.object_to_key(object);
-            let writer = self.operator.writer_with(&key).await.map_err(|e| {
+            let mut writer_fut = self.operator.writer_with(&key);
+            // Object stores need an explicit chunk size: without one, every
+            // incoming stream chunk becomes its own upload part, and azblob
+            // (no service-declared minimum) would exceed Azure's 50,000-block
+            // cap on large files. Filesystem writers stream through unchanged.
+            if self.root_path.is_none() {
+                writer_fut = writer_fut.chunk(OBJECT_STORE_WRITE_CHUNK_SIZE);
+            }
+            let writer = writer_fut.await.map_err(|e| {
                 let class = classify_opendal_error(&e);
                 Error {
                     class,
@@ -857,7 +874,7 @@ impl Storage for OpendalStore {
 /// - `gcs://bucket/prefix` - Google Cloud Storage (uses `GOOGLE_APPLICATION_CREDENTIALS` env var)
 /// - `azblob://container/prefix` - Azure Blob Storage (uses `AZURE_STORAGE_ACCOUNT`, `AZURE_STORAGE_KEY` env vars)
 /// - `b2://bucket/prefix` - Backblaze B2 (uses `B2_APPLICATION_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET_ID` env vars)
-/// - `swift://container/prefix` - `OpenStack` Swift (uses `SWIFT_ENDPOINT`, `SWIFT_TOKEN` env vars)
+/// - `swift://container/prefix` - `OpenStack` Swift, read-only (uses `SWIFT_ENDPOINT`, `SWIFT_TOKEN` env vars)
 /// - `sftp://[user@]host[:port]/path` - SFTP (uses `SFTP_USER`, `SFTP_KEY` env vars)
 ///
 /// Creates a backend from a URL string with configuration.

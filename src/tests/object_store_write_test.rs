@@ -1,4 +1,4 @@
-//! Tests for writable object-store (S3/GCS/Azure/B2/Swift) destinations.
+//! Tests for writable object-store (S3/GCS/Azure/B2) destinations.
 //!
 //! Most tests use `mock_object_store` (see `tests::utils`) — a local-fs-backed
 //! store that presents exactly what a cloud object store presents to the rest

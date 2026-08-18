@@ -90,7 +90,7 @@ stellar-archivist mirror https://history.stellar.org/prd/core-testnet/core_testn
 # Skip optional files (scp)
 stellar-archivist mirror https://history.stellar.org/prd/core-testnet/core_testnet_001 file:///local/mirror --skip-optional
 
-# Mirror to a cloud object store (s3://, gcs://, azblob://, b2://, swift://; credentials via standard env vars)
+# Mirror to a cloud object store (s3://, gcs://, azblob://, b2://; credentials via standard env vars)
 stellar-archivist mirror https://history.stellar.org/prd/core-testnet/core_testnet_001 s3://my-bucket/testnet-mirror
 ```
 

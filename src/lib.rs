@@ -315,7 +315,7 @@ pub mod test_helpers {
 
         if !dst_store.supports_writes() {
             return Err(crate::Error::Other(format!(
-                "Destination does not support writes: {} (writable backends: file://, s3://, gcs://, azblob://, b2://, swift://)",
+                "Destination does not support writes: {} (writable backends: file://, s3://, gcs://, azblob://, b2://)",
                 config.dst
             )));
         }
@@ -448,7 +448,7 @@ pub mod test_helpers {
 
         if !dst_store.supports_writes() {
             return Err(crate::Error::Other(format!(
-                "Destination does not support writes: {} (writable backends: file://, s3://, gcs://, azblob://, b2://, swift://)",
+                "Destination does not support writes: {} (writable backends: file://, s3://, gcs://, azblob://, b2://)",
                 config.dst
             )));
         }

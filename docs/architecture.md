@@ -165,7 +165,8 @@ copy operations. Backends are selected from URL schemes by
 | Scheme | Backend | Writable |
 |---|---|---|
 | `file://` | local filesystem | yes |
-| `s3://`, `gcs://`/`gs://`, `azblob://`/`azure://`, `b2://`, `swift://` | feature-gated cloud object stores | yes |
+| `s3://`, `gcs://`/`gs://`, `azblob://`/`azure://`, `b2://` | feature-gated cloud object stores | yes |
+| `swift://` | feature-gated OpenStack Swift | no (single-request writer cannot stream large objects) |
 | `http://`, `https://` | HTTP/HTTPS | no |
 | `sftp://` | feature-gated SFTP | no |
 
