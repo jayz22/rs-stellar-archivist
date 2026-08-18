@@ -2,7 +2,7 @@
 
 use crate::history_format;
 use crate::pipeline::{async_trait, HistoryOutcome, Operation, PipelineConfig, ProcessOutcome};
-use crate::storage::{self, Error as StorageError, StorageRef};
+use crate::storage::{self, Error as StorageError, ErrorClass, StorageRef};
 use crate::utils::{compute_checkpoint_bounds, fetch_well_known_history_file, ArchiveStats};
 use crate::xdr_verify::XdrVerificationManager;
 use thiserror::Error;
@@ -92,13 +92,13 @@ impl MirrorOperation {
         }
     }
 
-    /// Get the destination's initial checkpoint from .well-known file, caching the result
-    /// Returns None if destination doesn't have a .well-known file
-    async fn get_initial_dest_well_known_checkpoint(&self) -> Option<u32> {
-        *self
-            .initial_dest_checkpoint
-            .get_or_init(|| async {
-                // Try to read the destination's .well-known file
+    /// Get the destination's initial checkpoint from .well-known, caching the
+    /// result. `Ok(None)` means the destination has no .well-known (fresh
+    /// archive). Anything else — a present-but-unparseable .well-known, or a
+    /// storage error other than `NotFound` — is an `Err`.
+    async fn get_initial_dest_well_known_checkpoint(&self) -> Result<Option<u32>, Error> {
+        self.initial_dest_checkpoint
+            .get_or_try_init(|| async {
                 match fetch_well_known_history_file(
                     &self.dst_store,
                     self.pipeline_config.storage_config.max_retries as u32,
@@ -109,11 +109,13 @@ impl MirrorOperation {
                 )
                 .await
                 {
-                    Ok(has) => Some(has.current_ledger),
-                    Err(_) => None, // No existing archive
+                    Ok(has) => Ok(Some(has.current_ledger)),
+                    Err(e) if e.is_not_found() => Ok(None),
+                    Err(e) => Err(e.into()),
                 }
             })
             .await
+            .copied()
     }
 
     async fn maybe_update_well_known(&self, highest_checkpoint: u32) -> Result<(), Error> {
@@ -123,7 +125,7 @@ impl MirrorOperation {
         // 2. The new checkpoint is higher than the existing .well-known file
 
         let should_update = if let Some(existing_ledger) =
-            self.get_initial_dest_well_known_checkpoint().await
+            self.get_initial_dest_well_known_checkpoint().await?
         {
             let existing_checkpoint = history_format::round_to_lower_checkpoint(existing_ledger);
             if highest_checkpoint > existing_checkpoint {
@@ -230,7 +232,10 @@ impl Operation for MirrorOperation {
         let source_checkpoint =
             history_format::round_to_lower_checkpoint(source_state.current_ledger);
 
-        let dest_checkpoint_opt = self.get_initial_dest_well_known_checkpoint().await;
+        let dest_checkpoint_opt = self
+            .get_initial_dest_well_known_checkpoint()
+            .await
+            .map_err(crate::pipeline::Error::MirrorOperation)?;
 
         // Determine the target checkpoint (limited by source and --high if specified)
         let target_checkpoint = if let Some(high) = self.high {
@@ -405,14 +410,21 @@ impl Operation for MirrorOperation {
     async fn process_history(&self, path: &str) -> Result<HistoryOutcome, StorageError> {
         // Symmetric with process_object's `exists && !overwrite => Skipped`.
         if !self.overwrite {
-            if let Ok(buffer) = storage::download_buffer(&self.dst_store, path).await {
-                if let Ok(state) = history_format::parse_history(&buffer, path) {
-                    return Ok(HistoryOutcome {
-                        outcome: ProcessOutcome::Skipped,
-                        state: Some(state),
-                    });
+            match storage::download_buffer(&self.dst_store, path).await {
+                Ok(buffer) => {
+                    if let Ok(state) = history_format::parse_history(&buffer, path) {
+                        return Ok(HistoryOutcome {
+                            outcome: ProcessOutcome::Skipped,
+                            state: Some(state),
+                        });
+                    }
+                    // present but unparseable -> fall through and re-fetch from source
                 }
-                // present but unparseable -> fall through and re-fetch from source
+                // Missing -> fall through and fetch from source.
+                Err(e) if e.class == ErrorClass::NotFound => {}
+                // Any other destination error is not "absent" — surface it so
+                // the pipeline's retry/failure handling sees it.
+                Err(e) => return Err(e),
             }
         }
 

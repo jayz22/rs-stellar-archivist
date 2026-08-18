@@ -55,6 +55,9 @@ pub enum Error {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[error(transparent)]
+    Storage(#[from] crate::storage::Error),
+
     #[error("History format error: {0}")]
     HistoryFormat(#[from] crate::history_format::Error),
 
@@ -71,6 +74,15 @@ pub enum Error {
         low_checkpoint: u32,
         high_checkpoint: u32,
     },
+}
+
+impl Error {
+    /// True when the storage backend reported the object absent — the only
+    /// error that means "the archive doesn't have this file".
+    #[must_use]
+    pub fn is_not_found(&self) -> bool {
+        matches!(self, Error::Storage(e) if e.class == crate::storage::ErrorClass::NotFound)
+    }
 }
 
 /// Helper function to map pipeline errors to library errors
@@ -573,7 +585,10 @@ pub async fn fetch_well_known_history_file(
         || crate::storage::download_buffer(store, ROOT_WELL_KNOWN_PATH),
     )
     .await
-    .map_err(|e| std::io::Error::other(format!("Failed to fetch {ROOT_WELL_KNOWN_PATH}: {e}")))?;
+    .map_err(|e| crate::storage::Error {
+        class: e.class,
+        message: format!("Failed to fetch {ROOT_WELL_KNOWN_PATH}: {e}"),
+    })?;
 
     // Parse the JSON
     tracing::debug!("Read {} bytes from {}", buffer.len(), ROOT_WELL_KNOWN_PATH);

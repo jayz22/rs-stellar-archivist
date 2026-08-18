@@ -1213,3 +1213,24 @@ async fn test_mirror_no_overwrite_replaces_broken_history() {
 // Pubnet early-SCP-gap tolerance for mirror (incl. .well-known passphrase
 // preservation) is covered against real pubnet data in
 // tests/pubnet_scp_gap_test.rs.
+
+/// A destination `.well-known` that exists but does not parse must fail the
+/// mirror rather than be treated as a missing archive
+#[tokio::test]
+async fn mirror_fails_on_corrupt_destination_well_known() {
+    let src_url = file_url_from_path(&testnet_small_archive_path());
+    let dst_dir = TempDir::new().unwrap();
+
+    let well_known_dir = dst_dir.path().join(".well-known");
+    std::fs::create_dir_all(&well_known_dir).unwrap();
+    std::fs::write(well_known_dir.join("stellar-history.json"), "not json {").unwrap();
+
+    let dst_url = file_url_from_path(dst_dir.path());
+    let err = run_mirror(MirrorConfig::new(&src_url, &dst_url))
+        .await
+        .expect_err("corrupt destination .well-known must fail the mirror");
+    assert!(
+        err.to_string().contains("Invalid JSON"),
+        "error should surface the parse failure, got: {err}"
+    );
+}
