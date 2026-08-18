@@ -155,8 +155,23 @@ impl MirrorOperation {
             // Copy the history file at the specified checkpoint to be our .well-known file
             let history_path = history_format::checkpoint_path("history", highest_checkpoint);
 
+            let max_retries = self.pipeline_config.storage_config.max_retries as u32;
+            let retry_min_delay_ms = self
+                .pipeline_config
+                .storage_config
+                .retry_min_delay
+                .as_millis() as u64;
+
             // Check if the history file exists (it might not if the mirror had failures)
-            if !self.dst_store.exists(&history_path).await? {
+            if !crate::utils::with_retries(
+                max_retries,
+                retry_min_delay_ms,
+                "probe",
+                &history_path,
+                || self.dst_store.exists(&history_path),
+            )
+            .await?
+            {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
                     format!(
@@ -171,6 +186,8 @@ impl MirrorOperation {
                 &self.dst_store,
                 &history_path,
                 self.pipeline_config.source_network_passphrase.as_deref(),
+                max_retries,
+                retry_min_delay_ms,
             )
             .await?;
 

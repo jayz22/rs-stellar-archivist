@@ -659,21 +659,41 @@ pub(crate) fn stamp_network_passphrase(
 
 /// Copy `history_path` (already present on `store`) to
 /// `.well-known/stellar-history.json` on the same store, stamping the network
-/// passphrase when provided. Works on any writable backend.
+/// passphrase when provided. Works on any writable backend; the destination
+/// read and write are retried up to `max_retries` times.
 pub async fn update_well_known_from_history(
     store: &crate::storage::StorageRef,
     history_path: &str,
     network_passphrase: Option<&str>,
+    max_retries: u32,
+    retry_min_delay_ms: u64,
 ) -> Result<(), crate::storage::Error> {
-    let buffer = crate::storage::download_buffer(store, history_path).await?;
+    let buffer = with_retries(
+        max_retries,
+        retry_min_delay_ms,
+        "download",
+        history_path,
+        || crate::storage::download_buffer(store, history_path),
+    )
+    .await?;
     let contents = stamp_network_passphrase(buffer.to_vec(), network_passphrase).map_err(|e| {
         crate::storage::Error::fatal(format!(
             "Failed to stamp network passphrase into {history_path}: {e}"
         ))
     })?;
-    store
-        .write(crate::history_format::ROOT_WELL_KNOWN_PATH, contents.into())
-        .await
+    with_retries(
+        max_retries,
+        retry_min_delay_ms,
+        "write",
+        crate::history_format::ROOT_WELL_KNOWN_PATH,
+        || {
+            store.write(
+                crate::history_format::ROOT_WELL_KNOWN_PATH,
+                contents.clone().into(),
+            )
+        },
+    )
+    .await
 }
 
 /// Compute checkpoint bounds using a pre-fetched source checkpoint
